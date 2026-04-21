@@ -1,0 +1,72 @@
+[package]
+name = "npclassifier-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+burn-backend = ["dep:burn"]
+classify-cli = ["runner", "dep:clap"]
+demo-cli = ["dep:clap"]
+distillation-dataset = [
+    "dep:arrow-array",
+    "dep:arrow-schema",
+    "dep:clap",
+    "dep:half",
+    "dep:indicatif",
+    "dep:parquet",
+    "dep:rand",
+    "dep:rayon",
+    "dep:tempfile",
+    "dep:zstd",
+]
+fingerprints = ["dep:finge-rs", "dep:smiles-parser"]
+reference-dataset = ["dep:clap", "dep:indicatif", "dep:tokio", "dep:zenodo-rs", "dep:zstd"]
+runner = ["fingerprints", "dep:rayon", "dep:reqwest"]
+
+[dependencies]
+arrow-array = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
+burn = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+finge-rs = { workspace = true, optional = true }
+half = { workspace = true, optional = true }
+indicatif = { workspace = true, optional = true }
+ndarray.workspace = true
+ndarray-npy.workspace = true
+parquet = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+rayon = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+smiles-parser = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+thiserror.workspace = true
+tokio = { workspace = true, optional = true }
+zenodo-rs = { workspace = true, optional = true }
+zstd = { workspace = true, optional = true }
+
+[[bin]]
+name = "npclassifier-classify"
+path = "src/bin/classify.rs"
+required-features = ["classify-cli"]
+
+[[bin]]
+name = "npclassifier-reference"
+path = "src/bin/reference.rs"
+required-features = ["reference-dataset"]
+
+[[bin]]
+name = "npclassifier-demo"
+path = "src/bin/demo.rs"
+required-features = ["demo-cli"]
+
+[[bin]]
+name = "npclassifier-curate"
+path = "src/bin/curate.rs"
+required-features = ["distillation-dataset"]
+
+[lints]
+workspace = true

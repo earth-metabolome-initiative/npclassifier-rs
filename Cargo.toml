@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/npclassifier-core",
+    "crates/npclassifier-train",
+    "apps/web",
+    "apps/web-worker",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+
+[workspace.dependencies]
+arrow-array = "56.2.0"
+arrow-schema = "56.2.0"
+burn = { version = "=0.20.1", default-features = false }
+clap = { version = "4.5.39", features = ["derive"] }
+dioxus = "0.7.2"
+finge-rs = { git = "https://github.com/earth-metabolome-initiative/finge-rs", branch = "main", default-features = false, features = ["smiles-support"] }
+half = "2.7.1"
+indicatif = "0.18.4"
+ndarray = "0.17.2"
+ndarray-npy = { version = "0.10.0", features = ["npz"] }
+parquet = { version = "56.2.0", default-features = false, features = ["arrow", "zstd"] }
+rand = { version = "0.9.2", features = ["std", "std_rng"] }
+rayon = "1.11.0"
+reqwest = { version = "0.12.24", default-features = false, features = ["blocking", "rustls-tls"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+smiles-parser = { git = "https://github.com/earth-metabolome-initiative/smiles-parser", branch = "main", default-features = false }
+tempfile = "3.23.0"
+thiserror = "2.0.18"
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
+zenodo-rs = { version = "0.1.2", features = ["checksums"] }
+zstd = "0.13.3"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
