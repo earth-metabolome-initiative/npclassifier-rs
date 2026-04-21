@@ -239,6 +239,16 @@ fn render_loading_state(progress: &LoadingState) -> Element {
             p { class: "loading-meta",
                 "{progress.completed} / {progress.total} complete"
             }
+            if let Some(eta_seconds) = progress.eta_seconds {
+                p { class: "loading-meta",
+                    "ETA {format_eta(eta_seconds)}"
+                }
+            }
+            if progress.suggest_native {
+                p { class: "panel-copy loading-note",
+                    "This browser run is estimated to take over an hour. For large-scale batches, use the native CLI instead."
+                }
+            }
         }
     }
 }
@@ -366,6 +376,18 @@ fn empty_result_state() -> Element {
     rsx! {}
 }
 
+fn format_eta(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    match (hours, minutes, seconds) {
+        (0, 0, seconds) => format!("{seconds}s"),
+        (0, minutes, seconds) => format!("{minutes}m {seconds:02}s"),
+        (hours, minutes, _) => format!("{hours}h {minutes:02}m"),
+    }
+}
+
 fn label_group(
     title: &str,
     icon_class: &'static str,
@@ -414,7 +436,7 @@ fn model_toggle_icon_class(model: WebModelVariant) -> &'static str {
 mod tests {
     use npclassifier_core::{FingerprintGenerator, PredictionLabels, WebBatchEntry};
 
-    use super::entry_has_no_labels;
+    use super::{entry_has_no_labels, format_eta};
 
     #[test]
     fn counted_morgan_rejects_invalid_smiles() {
@@ -436,5 +458,12 @@ mod tests {
         };
 
         assert!(entry_has_no_labels(&entry));
+    }
+
+    #[test]
+    fn eta_formatting_is_compact_and_readable() {
+        assert_eq!(format_eta(42), "42s");
+        assert_eq!(format_eta(125), "2m 05s");
+        assert_eq!(format_eta(3_726), "1h 02m");
     }
 }

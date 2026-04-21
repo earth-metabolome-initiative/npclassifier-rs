@@ -42,6 +42,8 @@ pub struct LoadingState {
     pub label: String,
     pub completed: usize,
     pub total: usize,
+    pub eta_seconds: Option<u64>,
+    pub suggest_native: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -58,6 +60,7 @@ struct LoadingControls {
     loading_visible: Rc<Cell<bool>>,
     loading_timeout_id: Rc<Cell<Option<i32>>>,
     pending_loading_state: Rc<RefCell<Option<LoadingState>>>,
+    request_started_at_ms: Rc<Cell<Option<f64>>>,
 }
 
 #[derive(Clone)]
@@ -201,12 +204,14 @@ impl ClassifierRuntime {
         self.loading.request_inflight.set(Some(token));
         self.loading.loading_visible.set(false);
         self.loading.pending_loading_state.borrow_mut().take();
+        self.loading.request_started_at_ms.set(Some(now_ms()));
         clear_loading_timeout(&self.loading.loading_timeout_id);
         selected_index.set(0);
 
         let lines = parse_batch_smiles(input);
         if lines.is_empty() {
             self.loading.request_inflight.set(None);
+            self.loading.request_started_at_ms.set(None);
             batch_state.set(BatchState::Empty);
             let _ignored =
                 send_worker_request(&self.worker_client, &WebWorkerRequest::Cancel { token });
@@ -221,6 +226,8 @@ impl ClassifierRuntime {
                 label: format!("Starting {}", model_variant.loading_name()),
                 completed: 0,
                 total: INITIAL_MODEL_LOAD_TOTAL,
+                eta_seconds: None,
+                suggest_native: false,
             }));
         } else {
             schedule_loading_timeout(batch_state, &self.loading, token, lines.len());
@@ -248,11 +255,13 @@ pub fn use_classifier(initial_input: impl FnOnce() -> String + 'static) -> Class
     let loading_visible = use_hook(|| Rc::new(Cell::new(false)));
     let loading_timeout_id = use_hook(|| Rc::new(Cell::new(None::<i32>)));
     let pending_loading_state = use_hook(|| Rc::new(RefCell::new(None::<LoadingState>)));
+    let request_started_at_ms = use_hook(|| Rc::new(Cell::new(None::<f64>)));
     let loading = LoadingControls {
         request_inflight: request_inflight.clone(),
         loading_visible: loading_visible.clone(),
         loading_timeout_id: loading_timeout_id.clone(),
         pending_loading_state: pending_loading_state.clone(),
+        request_started_at_ms: request_started_at_ms.clone(),
     };
     let worker_client = use_hook({
         let request_token = request_token.clone();
@@ -347,10 +356,18 @@ impl ClassifierWorker {
                     total,
                     ..
                 } => {
+                    let eta_seconds = estimate_loading_eta_seconds(
+                        &label,
+                        completed,
+                        total,
+                        onmessage_loading.request_started_at_ms.get(),
+                    );
                     let next_loading_state = LoadingState {
                         label,
                         completed,
                         total,
+                        eta_seconds,
+                        suggest_native: should_suggest_native_run(eta_seconds),
                     };
                     if onmessage_loading.loading_visible.get() {
                         clear_loading_timeout(&onmessage_loading.loading_timeout_id);
@@ -365,6 +382,7 @@ impl ClassifierWorker {
                 WebWorkerResponse::Complete { entries, .. } => {
                     onmessage_loading.request_inflight.set(None);
                     onmessage_loading.loading_visible.set(false);
+                    onmessage_loading.request_started_at_ms.set(None);
                     onmessage_loading.pending_loading_state.borrow_mut().take();
                     clear_loading_timeout(&onmessage_loading.loading_timeout_id);
                     batch_state.set(BatchState::Ready(Rc::new(BatchClassification { entries })));
@@ -372,6 +390,7 @@ impl ClassifierWorker {
                 WebWorkerResponse::Fatal { message, .. } => {
                     onmessage_loading.request_inflight.set(None);
                     onmessage_loading.loading_visible.set(false);
+                    onmessage_loading.request_started_at_ms.set(None);
                     onmessage_loading.pending_loading_state.borrow_mut().take();
                     clear_loading_timeout(&onmessage_loading.loading_timeout_id);
                     batch_state.set(BatchState::Fatal(message));
@@ -385,6 +404,7 @@ impl ClassifierWorker {
         let onerror = Closure::wrap(Box::new(move |event: ErrorEvent| {
             onerror_loading.request_inflight.set(None);
             onerror_loading.loading_visible.set(false);
+            onerror_loading.request_started_at_ms.set(None);
             clear_loading_timeout(&onerror_loading.loading_timeout_id);
             batch_state.set(BatchState::Fatal(format!(
                 "classifier worker crashed: {}",
@@ -505,6 +525,8 @@ fn schedule_loading_timeout(
                     label: String::from("Starting classifier"),
                     completed: 0,
                     total: total.max(1),
+                    eta_seconds: None,
+                    suggest_native: false,
                 });
             batch_state.set(BatchState::Loading(next_loading_state));
         }
@@ -545,11 +567,51 @@ fn parse_batch_smiles(input: &str) -> Vec<String> {
         .collect()
 }
 
+fn estimate_loading_eta_seconds(
+    label: &str,
+    completed: usize,
+    total: usize,
+    request_started_at_ms: Option<f64>,
+) -> Option<u64> {
+    if !label.starts_with("Classifying ") || completed == 0 || completed >= total {
+        return None;
+    }
+    let started_at_ms = request_started_at_ms?;
+    let elapsed_ms = now_ms() - started_at_ms;
+    if elapsed_ms <= 0.0 {
+        return None;
+    }
+
+    let completed_f64 = completed as f64;
+    let remaining = total.saturating_sub(completed) as f64;
+    let eta_seconds = ((elapsed_ms / 1000.0) * (remaining / completed_f64)).ceil();
+    Some(eta_seconds.max(1.0) as u64)
+}
+
+const NATIVE_HINT_THRESHOLD_SECONDS: u64 = 60 * 60;
+
+fn should_suggest_native_run(eta_seconds: Option<u64>) -> bool {
+    eta_seconds.is_some_and(|seconds| seconds > NATIVE_HINT_THRESHOLD_SECONDS)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn now_ms() -> f64 {
+    js_sys::Date::now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now_ms() -> f64 {
+    0.0
+}
+
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
 
-    use super::{BatchClassification, BatchState, parse_batch_smiles};
+    use super::{
+        BatchClassification, BatchState, estimate_loading_eta_seconds, parse_batch_smiles,
+        should_suggest_native_run,
+    };
 
     #[test]
     fn parse_batch_smiles_keeps_one_smiles_per_non_empty_line() {
@@ -564,5 +626,25 @@ mod tests {
             entries: Vec::new(),
         }));
         assert!(matches!(state, BatchState::Ready(_)));
+    }
+
+    #[test]
+    fn eta_is_only_reported_for_classification_progress() {
+        let eta = estimate_loading_eta_seconds("Loading model", 1, 10, Some(-4_000.0));
+
+        assert_eq!(eta, None);
+    }
+
+    #[test]
+    fn eta_is_estimated_from_elapsed_time() {
+        let eta = estimate_loading_eta_seconds("Classifying 10 SMILES", 2, 10, Some(-2_000.0));
+
+        assert_eq!(eta, Some(8));
+    }
+
+    #[test]
+    fn native_hint_is_only_shown_for_very_long_runs() {
+        assert!(!should_suggest_native_run(Some(3_600)));
+        assert!(should_suggest_native_run(Some(3_601)));
     }
 }
