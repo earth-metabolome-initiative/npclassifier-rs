@@ -18,6 +18,8 @@ mod app {
     use web_sys::{DedicatedWorkerGlobalScope, MessageEvent, Response};
 
     const MODEL_LOAD_TOTAL: usize = 6;
+    const DEFAULT_MINI_MODEL_BASE_URL: &str = "/models/mini-shared";
+    const DEFAULT_FULL_MODEL_BASE_URL: &str = "/models/full";
     thread_local! {
         static ACTIVE_TOKEN: Cell<u64> = const { Cell::new(0) };
         static RUNTIMES: RefCell<Vec<(WebModelVariant, Rc<ModelRuntime>)>> = const { RefCell::new(Vec::new()) };
@@ -201,32 +203,47 @@ mod app {
     }
 
     fn model_thresholds_url(model_variant: WebModelVariant) -> String {
-        format!("/models/{}/thresholds.json", model_variant.slug())
+        join_url(model_base_url(model_variant), "thresholds.json")
     }
 
     fn model_shared_url(model_variant: WebModelVariant) -> String {
-        format!(
-            "/models/{}/shared/shared.q4-kernel.npz",
-            model_variant.slug()
-        )
+        join_url(model_base_url(model_variant), "shared/shared.q4-kernel.npz")
     }
 
     fn model_pathway_url(model_variant: WebModelVariant) -> String {
-        format!(
-            "/models/{}/pathway/pathway.q4-kernel.npz",
-            model_variant.slug()
-        )
+        join_url(model_base_url(model_variant), "pathway/pathway.q4-kernel.npz")
     }
 
     fn model_superclass_url(model_variant: WebModelVariant) -> String {
-        format!(
-            "/models/{}/superclass/superclass.q4-kernel.npz",
-            model_variant.slug()
+        join_url(
+            model_base_url(model_variant),
+            "superclass/superclass.q4-kernel.npz",
         )
     }
 
     fn model_class_url(model_variant: WebModelVariant) -> String {
-        format!("/models/{}/class/class.q4-kernel.npz", model_variant.slug())
+        join_url(model_base_url(model_variant), "class/class.q4-kernel.npz")
+    }
+
+    fn model_base_url(model_variant: WebModelVariant) -> &'static str {
+        match model_variant {
+            WebModelVariant::MiniShared => {
+                option_env!("NPCLASSIFIER_MINI_MODEL_BASE_URL")
+                    .unwrap_or(DEFAULT_MINI_MODEL_BASE_URL)
+            }
+            WebModelVariant::Full => {
+                option_env!("NPCLASSIFIER_FULL_MODEL_BASE_URL")
+                    .unwrap_or(DEFAULT_FULL_MODEL_BASE_URL)
+            }
+        }
+    }
+
+    fn join_url(base: &str, path: &str) -> String {
+        if base.ends_with('/') {
+            format!("{base}{path}")
+        } else {
+            format!("{base}/{path}")
+        }
     }
 
     fn post_load_progress(token: u64, label: &str, completed: usize) -> Result<(), JsValue> {

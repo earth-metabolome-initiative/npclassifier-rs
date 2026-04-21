@@ -17,6 +17,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  NPCLASSIFIER_MINI_MODEL_BASE_URL: https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/mini-shared
+  NPCLASSIFIER_FULL_MODEL_BASE_URL: https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/full
 
 jobs:
   build:
