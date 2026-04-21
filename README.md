@@ -1,5 +1,12 @@
 # npclassifier-rs
 
+[![CI](https://github.com/earth-metabolome-initiative/npclassifier-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/earth-metabolome-initiative/npclassifier-rs/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/earth-metabolome-initiative/npclassifier-rs/graph/badge.svg)](https://codecov.io/gh/earth-metabolome-initiative/npclassifier-rs)
+[![Pages](https://github.com/earth-metabolome-initiative/npclassifier-rs/actions/workflows/pages.yml/badge.svg)](https://github.com/earth-metabolome-initiative/npclassifier-rs/actions/workflows/pages.yml)
+[![Web App](https://img.shields.io/badge/web-npc.earthmetabolome.org-0f766e)](https://npc.earthmetabolome.org/)
+[![Models](https://img.shields.io/badge/models-Hugging%20Face-f59e0b?logo=huggingface&logoColor=white)](https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
+
 Rust implementation of `NPClassifier`, plus a browser frontend built with Dioxus.
 
 The repository stays focused on a faithful `NPClassifier` line. The main practical deviation is low-bit packed inference for browser delivery.
