@@ -80,6 +80,10 @@ button {
     letter-spacing: -0.05em;
 }
 
+.hero-rust-suffix {
+    color: #dea584;
+}
+
 .hero-copy,
 .panel-copy,
 .selected-copy,

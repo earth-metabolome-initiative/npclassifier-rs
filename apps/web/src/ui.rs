@@ -17,7 +17,10 @@ pub fn Header(repository_url: &'static str) -> Element {
             div { class: "hero-main",
                 div { class: "hero-head",
                     p { class: "eyebrow", "Earth Metabolome Initiative" }
-                    h1 { "NPClassifier" }
+                    h1 {
+                        "NPClassifier"
+                        span { class: "hero-rust-suffix", ".rs" }
+                    }
                 }
                 p { class: "hero-copy",
                     "Classify natural products from SMILES in your browser."
