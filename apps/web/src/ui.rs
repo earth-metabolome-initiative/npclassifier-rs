@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use npclassifier_core::{WebBatchEntry as BatchEntry, WebModelVariant};
 
-use crate::classifier::BatchState;
+use crate::classifier::{BatchState, LoadingState};
 use crate::presentation::{
     GroupKind, VisibleLabel, WebOverview, format_score, visible_scored_labels,
 };
@@ -198,118 +198,139 @@ pub fn fa_icon(class_name: &str) -> Element {
 
 fn render_result_state(state: &BatchState, active_entry: Option<&BatchEntry>) -> Element {
     match state {
-        BatchState::Loading(progress) => rsx! {
-            div { class: "loading-card",
-                div { class: "loading-head",
-                    div { class: "state-icon",
-                        {fa_icon("fa-solid fa-spinner fa-spin")}
-                    }
-                    p { class: "empty-title", "{progress.label}" }
-                }
-                progress {
-                    class: "loading-progress",
-                    aria_label: "Classifier loading progress",
-                    aria_valuetext: "{progress.completed} of {progress.total} complete",
-                    max: "{progress.total.max(1)}",
-                    value: "{progress.completed}",
-                }
-                p { class: "loading-meta",
-                    "{progress.completed} / {progress.total} complete"
-                }
-            }
-        },
-        BatchState::Fatal(error) => rsx! {
-            div { class: "empty-state error-state",
-                div { class: "state-icon error-icon",
-                    {fa_icon("fa-solid fa-triangle-exclamation")}
-                }
-                p { class: "empty-title", "Classifier could not run" }
-                p { class: "panel-copy",
-                    "The worker could not load or execute the q4 classifier."
-                }
-                p { class: "copy-note", "{error}" }
-            }
-        },
+        BatchState::Loading(progress) => render_loading_state(progress),
+        BatchState::Fatal(error) => render_fatal_state(error),
         BatchState::Ready(_) => {
             if let Some(entry) = active_entry {
                 if let Some(error) = entry.error.as_deref() {
-                    rsx! {
-                        div { class: "empty-state error-state",
-                            div { class: "state-icon error-icon",
-                                {fa_icon("fa-solid fa-circle-exclamation")}
-                            }
-                            p { class: "empty-title", "Invalid SMILES" }
-                            p { class: "panel-copy",
-                                "This line could not be parsed as SMILES, so no classification was produced."
-                            }
-                            p { class: "copy-note", "{error}" }
-                        }
-                    }
+                    render_invalid_smiles_state(error)
                 } else if entry_has_no_labels(entry) {
-                    rsx! {
-                        div { class: "empty-state",
-                            div { class: "state-icon",
-                                {fa_icon("fa-solid fa-ban")}
-                            }
-                            p { class: "empty-title", "No classification for this case" }
-                            p { class: "panel-copy",
-                                "NPClassifier did not assign any pathway, superclass, or class label to this structure."
-                            }
-                            p { class: "copy-note",
-                                "This can happen for structures outside the model's domain or when no score clears the decision thresholds."
-                            }
-                        }
-                    }
+                    render_unclassified_state()
                 } else {
-                    let overview = WebOverview::load();
-                    let visible_pathways = visible_scored_labels(
-                        &entry.labels.pathways,
-                        &entry.pathway_scores,
-                        VISIBLE_PATHWAY_LIMIT,
-                    );
-                    let visible_superclasses = visible_scored_labels(
-                        &entry.labels.superclasses,
-                        &entry.superclass_scores,
-                        VISIBLE_SUPERCLASS_LIMIT,
-                    );
-                    let visible_classes = visible_scored_labels(
-                        &entry.labels.classes,
-                        &entry.class_scores,
-                        VISIBLE_CLASS_LIMIT,
-                    );
-                    rsx! {
-                        {label_group(
-                            "Pathways",
-                            "fa-solid fa-route",
-                            &visible_pathways,
-                            GroupKind::Pathway,
-                            overview,
-                        )}
-                        if !entry.labels.superclasses.is_empty() {
-                            {label_group(
-                                "Superclasses",
-                                "fa-solid fa-sitemap",
-                                &visible_superclasses,
-                                GroupKind::Superclass,
-                                overview,
-                            )}
-                        }
-                        if !entry.labels.classes.is_empty() {
-                            {label_group(
-                                "Classes",
-                                "fa-solid fa-tags",
-                                &visible_classes,
-                                GroupKind::Class,
-                                overview,
-                            )}
-                        }
-                    }
+                    render_labeled_result(entry)
                 }
             } else {
                 empty_result_state()
             }
         }
         BatchState::Empty => empty_result_state(),
+    }
+}
+
+fn render_loading_state(progress: &LoadingState) -> Element {
+    rsx! {
+        div { class: "loading-card",
+            div { class: "loading-head",
+                div { class: "state-icon",
+                    {fa_icon("fa-solid fa-spinner fa-spin")}
+                }
+                p { class: "empty-title", "{progress.label}" }
+            }
+            progress {
+                class: "loading-progress",
+                aria_label: "Classifier loading progress",
+                aria_valuetext: "{progress.completed} of {progress.total} complete",
+                max: "{progress.total.max(1)}",
+                value: "{progress.completed}",
+            }
+            p { class: "loading-meta",
+                "{progress.completed} / {progress.total} complete"
+            }
+        }
+    }
+}
+
+fn render_fatal_state(error: &str) -> Element {
+    rsx! {
+        div { class: "empty-state error-state",
+            div { class: "state-icon error-icon",
+                {fa_icon("fa-solid fa-triangle-exclamation")}
+            }
+            p { class: "empty-title", "Classifier could not run" }
+            p { class: "panel-copy",
+                "The worker could not load or execute the q4 classifier."
+            }
+            p { class: "copy-note", "{error}" }
+        }
+    }
+}
+
+fn render_invalid_smiles_state(error: &str) -> Element {
+    rsx! {
+        div { class: "empty-state error-state",
+            div { class: "state-icon error-icon",
+                {fa_icon("fa-solid fa-circle-exclamation")}
+            }
+            p { class: "empty-title", "Invalid SMILES" }
+            p { class: "panel-copy",
+                "This line could not be parsed as SMILES, so no classification was produced."
+            }
+            p { class: "copy-note", "{error}" }
+        }
+    }
+}
+
+fn render_unclassified_state() -> Element {
+    rsx! {
+        div { class: "empty-state",
+            div { class: "state-icon",
+                {fa_icon("fa-solid fa-ban")}
+            }
+            p { class: "empty-title", "No classification for this case" }
+            p { class: "panel-copy",
+                "NPClassifier did not assign any pathway, superclass, or class label to this structure."
+            }
+            p { class: "copy-note",
+                "This can happen for structures outside the model's domain or when no score clears the decision thresholds."
+            }
+        }
+    }
+}
+
+fn render_labeled_result(entry: &BatchEntry) -> Element {
+    let overview = WebOverview::load();
+    let visible_pathways = visible_scored_labels(
+        &entry.labels.pathways,
+        &entry.pathway_scores,
+        VISIBLE_PATHWAY_LIMIT,
+    );
+    let visible_superclasses = visible_scored_labels(
+        &entry.labels.superclasses,
+        &entry.superclass_scores,
+        VISIBLE_SUPERCLASS_LIMIT,
+    );
+    let visible_classes = visible_scored_labels(
+        &entry.labels.classes,
+        &entry.class_scores,
+        VISIBLE_CLASS_LIMIT,
+    );
+
+    rsx! {
+        {label_group(
+            "Pathways",
+            "fa-solid fa-route",
+            &visible_pathways,
+            GroupKind::Pathway,
+            overview,
+        )}
+        if !entry.labels.superclasses.is_empty() {
+            {label_group(
+                "Superclasses",
+                "fa-solid fa-sitemap",
+                &visible_superclasses,
+                GroupKind::Superclass,
+                overview,
+            )}
+        }
+        if !entry.labels.classes.is_empty() {
+            {label_group(
+                "Classes",
+                "fa-solid fa-tags",
+                &visible_classes,
+                GroupKind::Class,
+                overview,
+            )}
+        }
     }
 }
 

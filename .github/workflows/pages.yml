@@ -1,0 +1,71 @@
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Pages artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Install Rust toolchain
+        run: |
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-pages-${{ hashFiles('**/Cargo.lock', '.github/workflows/pages.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-pages-${{ hashFiles('**/Cargo.lock') }}-
+            ${{ runner.os }}-cargo-
+
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli --locked --version 0.7.2
+
+      - name: Build web app
+        run: dx build --platform web --release --package npclassifier-web --base-path /
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: target/dx/npclassifier-web/release/web/public
+
+  deploy:
+    name: Deploy Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

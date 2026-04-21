@@ -17,7 +17,7 @@ const DEFAULT_SAMPLE_POOL_SIZE: usize = 100;
 const DEFAULT_EXCLUDED_STARTUP_SMILES: &str = "C1=C(C(C=C(C1O)Cl)Cl)Cl";
 const COPY_MESSAGE_CLEAR_MS: i32 = 2420;
 const REPOSITORY_URL: &str = "https://github.com/earth-metabolome-initiative/npclassifier-rs";
-const SITE_URL: &str = "https://earth-metabolome-initiative.github.io/npclassifier-rs/";
+const SITE_URL: &str = "https://npc.earthmetabolome.org/";
 const PAGE_TITLE: &str = "NPClassifier | Browser-side natural product classification";
 const PAGE_DESCRIPTION: &str = "Classify natural products from SMILES directly in your browser with Mini and Faithful Rust/WASM NPClassifier models. No structure upload required.";
 const MINI_MODEL_TOOLTIP: &str = "Mini: compact distilled NPClassifier variant for routine browser use; usually close to Faithful, but it can differ on individual edge cases, at about 9 MiB in q4.";
