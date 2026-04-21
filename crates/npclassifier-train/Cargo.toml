@@ -1,0 +1,27 @@
+[package]
+name = "npclassifier-train"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+burn = { version = "=0.20.1", default-features = false, features = ["train", "tui", "metrics", "cuda", "ndarray", "fusion", "autotune"] }
+clap.workspace = true
+finge-rs.workspace = true
+half.workspace = true
+indicatif.workspace = true
+ndarray.workspace = true
+ndarray-npy.workspace = true
+npclassifier-core = { path = "../npclassifier-core", features = ["distillation-dataset", "fingerprints"] }
+parquet.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+smiles-parser.workspace = true
+thiserror.workspace = true
+tracing = "0.1.41"
+zstd.workspace = true
+
+[lints]
+workspace = true
