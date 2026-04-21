@@ -211,7 +211,10 @@ mod app {
     }
 
     fn model_pathway_url(model_variant: WebModelVariant) -> String {
-        join_url(model_base_url(model_variant), "pathway/pathway.q4-kernel.npz")
+        join_url(
+            model_base_url(model_variant),
+            "pathway/pathway.q4-kernel.npz",
+        )
     }
 
     fn model_superclass_url(model_variant: WebModelVariant) -> String {
@@ -227,14 +230,10 @@ mod app {
 
     fn model_base_url(model_variant: WebModelVariant) -> &'static str {
         match model_variant {
-            WebModelVariant::MiniShared => {
-                option_env!("NPCLASSIFIER_MINI_MODEL_BASE_URL")
-                    .unwrap_or(DEFAULT_MINI_MODEL_BASE_URL)
-            }
-            WebModelVariant::Full => {
-                option_env!("NPCLASSIFIER_FULL_MODEL_BASE_URL")
-                    .unwrap_or(DEFAULT_FULL_MODEL_BASE_URL)
-            }
+            WebModelVariant::MiniShared => option_env!("NPCLASSIFIER_MINI_MODEL_BASE_URL")
+                .unwrap_or(DEFAULT_MINI_MODEL_BASE_URL),
+            WebModelVariant::Full => option_env!("NPCLASSIFIER_FULL_MODEL_BASE_URL")
+                .unwrap_or(DEFAULT_FULL_MODEL_BASE_URL),
         }
     }
 
