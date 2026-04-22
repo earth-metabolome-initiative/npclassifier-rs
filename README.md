@@ -53,14 +53,29 @@ It also supports:
 The core crate also exposes a reusable builder-backed runner for local or remote packed bundles.
 
 ```rust
+# #[cfg(feature = "runner")]
+# {
+use std::path::PathBuf;
+
 use npclassifier_core::{PackedClassifierBuilder, PackedModelVariant};
 
-let builder = PackedClassifierBuilder::new()
-    .with_local_dir("/path/to/models/mini-shared")
-    .with_variant(PackedModelVariant::Q4Kernel)
-    .with_parallelism(8);
+let model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    .join("../../apps/web/public/models/mini-shared");
 
-let _ = builder;
+let classifier = PackedClassifierBuilder::new()
+    .with_local_dir(&model_dir)
+    .with_variant(PackedModelVariant::Q4Kernel)
+    .with_parallelism(4)
+    .build()?;
+
+let results = classifier.classify_lines_parallel("CCO\nC1=CC=CC=C1\n");
+
+assert_eq!(results.len(), 2);
+assert_eq!(results[0].smiles, "CCO");
+assert_eq!(results[1].smiles, "C1=CC=CC=C1");
+assert!(results.iter().all(|entry| entry.error.is_none()));
+# }
+# Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
 Maintainer notes are in [CONTRIBUTING.md](CONTRIBUTING.md).
