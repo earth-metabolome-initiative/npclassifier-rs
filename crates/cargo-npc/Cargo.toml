@@ -6,8 +6,11 @@ license.workspace = true
 description = "Cargo subcommand for classifying SMILES with packed NPClassifier bundles"
 
 [dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
 clap.workspace = true
 npclassifier-core = { version = "0.1.0", path = "../npclassifier-core", default-features = false, features = ["runner"] }
+parquet = { workspace = true, default-features = false, features = ["arrow", "zstd"] }
 serde_json.workspace = true
 
 [lints]
