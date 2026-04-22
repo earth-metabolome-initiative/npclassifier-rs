@@ -79,19 +79,18 @@ The core crate also exposes a reusable builder-backed runner for local or remote
 ```rust
 # #[cfg(feature = "runner")]
 # {
-use std::path::PathBuf;
-
 use npclassifier_core::{PackedClassifierBuilder, PackedModelVariant};
 
-let model_dir = std::iter::successors(Some(std::env::current_dir()?), |path| {
-    path.parent().map(|parent| parent.to_path_buf())
-})
-.map(|root| root.join("apps/web/public/models/mini-shared"))
-.find(|path| path.exists())
-.ok_or("could not find checked-in mini-shared model bundle")?;
+let cache_dir = std::env::temp_dir().join(format!(
+    "npclassifier-rs-doctest-{}",
+    std::process::id()
+));
 
 let classifier = PackedClassifierBuilder::new()
-    .with_local_dir(&model_dir)
+    .with_remote_base_url(
+        "https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/mini-shared",
+    )
+    .with_cache_dir(&cache_dir)
     .with_variant(PackedModelVariant::Q4Kernel)
     .with_parallelism(4)
     .build()?;

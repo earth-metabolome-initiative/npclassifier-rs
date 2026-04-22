@@ -35,7 +35,15 @@ fn run() -> Result<(), String> {
     let generated_dir = manifest_dir.join("public/generated");
 
     emit_git_commit(&workspace_root);
+    if should_skip_worker_build() {
+        println!("cargo:warning=skipping worker asset build during coverage instrumentation");
+        return Ok(());
+    }
     build_worker_assets(&workspace_root, &generated_dir)
+}
+
+fn should_skip_worker_build() -> bool {
+    env::var_os("CARGO_CFG_COVERAGE").is_some()
 }
 
 fn emit_git_commit(workspace_root: &Path) {
