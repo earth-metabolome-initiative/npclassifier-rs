@@ -1,0 +1,15 @@
+[application]
+name = "NPClassifier.rs"
+sub_package = "npclassifier-web"
+asset_dir = "apps/web/public"
+
+[web.app]
+title = "NPClassifier | Browser-side natural product classification"
+
+[web.resource]
+style = [
+    "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap",
+    "./style.css",
+]
+
+[web.resource.dev]

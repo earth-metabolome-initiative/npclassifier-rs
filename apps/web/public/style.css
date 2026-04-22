@@ -1,6 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap");
-@import url("https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css");
-
 :root {
     --bg: #f6f0e6;
     --bg-deep: #ece2d3;
@@ -133,7 +130,7 @@ button {
     background: rgba(20, 34, 41, 0.08);
 }
 
-.hero-link i {
+.hero-link .app-icon {
     color: #205e8c;
 }
 
@@ -192,7 +189,31 @@ button {
     gap: 0.55rem;
 }
 
-.title-with-icon i {
+.app-icon {
+    width: 1em;
+    height: 1em;
+    flex-shrink: 0;
+    stroke: currentColor;
+    stroke-width: 1.85;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
+
+.app-icon.is-spin {
+    animation: app-icon-spin 900ms linear infinite;
+}
+
+@keyframes app-icon-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.title-with-icon .app-icon {
     color: #205e8c;
     font-size: 0.88em;
 }
@@ -258,7 +279,7 @@ button {
         box-shadow 140ms ease;
 }
 
-.model-toggle-button i {
+.model-toggle-button .app-icon {
     font-size: 0.84em;
 }
 
@@ -510,6 +531,11 @@ button {
     background: rgba(32, 94, 140, 0.1);
     border: 1px solid rgba(32, 94, 140, 0.14);
     font-size: 1.05rem;
+}
+
+.state-icon .app-icon {
+    width: 1.15rem;
+    height: 1.15rem;
 }
 
 .error-icon {

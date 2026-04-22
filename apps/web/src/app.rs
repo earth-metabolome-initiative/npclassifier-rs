@@ -10,16 +10,12 @@ use crate::{
     ui::{Header, InputPanel, ResultPanel},
 };
 
-const STYLE: &str = include_str!("../public/style.css");
 const PLACEHOLDER_SMILES: &str = "CCO\nC1=CC=CC=C1\nCC(=O)OC1=CC=CC=C1C(=O)O";
 const DEFAULT_FALLBACK_SMILES: &str = "CCO";
 const DEFAULT_SAMPLE_POOL_SIZE: usize = 100;
 const DEFAULT_EXCLUDED_STARTUP_SMILES: &str = "C1=C(C(C=C(C1O)Cl)Cl)Cl";
 const COPY_MESSAGE_CLEAR_MS: i32 = 2420;
 const REPOSITORY_URL: &str = "https://github.com/earth-metabolome-initiative/npclassifier-rs";
-const SITE_URL: &str = "https://npc.earthmetabolome.org/";
-const PAGE_TITLE: &str = "NPClassifier | Browser-side natural product classification";
-const PAGE_DESCRIPTION: &str = "Classify natural products from SMILES directly in your browser with Mini and Faithful Rust/WASM NPClassifier models. No structure upload required.";
 const MINI_MODEL_TOOLTIP: &str = "Mini: compact distilled NPClassifier variant for routine browser use; usually close to Faithful, but it can differ on individual edge cases, at about 9 MiB in q4.";
 const FAITHFUL_MODEL_TOOLTIP: &str = "Faithful: q4 NPClassifier with the original architecture; larger and slower, but the better choice when you want the closest match to NPClassifier behavior, at about 121 MiB.";
 
@@ -49,40 +45,6 @@ pub fn App() -> Element {
     let classifier_for_download = classifier.clone();
 
     rsx! {
-        document::Title { "{PAGE_TITLE}" }
-        document::Meta { name: "description", content: "{PAGE_DESCRIPTION}" }
-        document::Meta { name: "viewport", content: "width=device-width, initial-scale=1" }
-        document::Meta { name: "theme-color", content: "#183746" }
-        document::Meta { name: "color-scheme", content: "light" }
-        document::Meta { name: "application-name", content: "NPClassifier" }
-        document::Meta { name: "author", content: "Earth Metabolome Initiative" }
-        document::Meta { name: "robots", content: "index, follow" }
-        document::Meta {
-            name: "keywords",
-            content: "NPClassifier, natural products, metabolomics, cheminformatics, SMILES, classification, Rust, WebAssembly",
-        }
-        document::Meta { property: "og:type", content: "website" }
-        document::Meta { property: "og:site_name", content: "NPClassifier" }
-        document::Meta { property: "og:title", content: "{PAGE_TITLE}" }
-        document::Meta { property: "og:description", content: "{PAGE_DESCRIPTION}" }
-        document::Meta { property: "og:url", content: "{SITE_URL}" }
-        document::Meta { name: "twitter:card", content: "summary" }
-        document::Meta { name: "twitter:title", content: "{PAGE_TITLE}" }
-        document::Meta { name: "twitter:description", content: "{PAGE_DESCRIPTION}" }
-        document::Link { rel: "canonical", href: "{SITE_URL}" }
-        document::Link {
-            rel: "icon",
-            href: "favicon.ico",
-            r#type: "image/x-icon",
-        }
-        document::Link {
-            rel: "shortcut icon",
-            href: "favicon.ico",
-            r#type: "image/x-icon",
-        }
-
-        style { {STYLE} }
-
         main { class: "page",
             Header {
                 repository_url: REPOSITORY_URL,

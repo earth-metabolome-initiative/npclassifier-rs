@@ -10,6 +10,24 @@ const VISIBLE_PATHWAY_LIMIT: usize = 3;
 const VISIBLE_SUPERCLASS_LIMIT: usize = 8;
 const VISIBLE_CLASS_LIMIT: usize = 12;
 
+#[derive(Clone, Copy)]
+enum IconKind {
+    Repository,
+    Mini,
+    Faithful,
+    Copy,
+    Download,
+    ArrowLeft,
+    ArrowRight,
+    Spinner,
+    Error,
+    Warning,
+    Ban,
+    Pathway,
+    Superclass,
+    Class,
+}
+
 #[component]
 pub fn Header(repository_url: &'static str) -> Element {
     rsx! {
@@ -34,7 +52,7 @@ pub fn Header(repository_url: &'static str) -> Element {
                     rel: "noopener noreferrer",
                     title: "Go to the GitHub repository",
                     aria_label: "Go to the GitHub repository",
-                    {fa_icon("fa-brands fa-github")}
+                    {app_icon(IconKind::Repository)}
                     span { "GitHub" }
                 }
             }
@@ -78,7 +96,7 @@ pub fn InputPanel(
                             title: "{mini_tooltip}",
                             aria_label: "Mini model. {mini_tooltip}",
                             onclick: move |_| on_select_model.call(WebModelVariant::MiniShared),
-                            {fa_icon(model_toggle_icon_class(WebModelVariant::MiniShared))}
+                            {app_icon(model_toggle_icon(WebModelVariant::MiniShared))}
                             span { "{WebModelVariant::MiniShared.display_name()}" }
                         }
                         button {
@@ -86,7 +104,7 @@ pub fn InputPanel(
                             title: "{faithful_tooltip}",
                             aria_label: "Faithful model. {faithful_tooltip}",
                             onclick: move |_| on_select_model.call(WebModelVariant::Full),
-                            {fa_icon(model_toggle_icon_class(WebModelVariant::Full))}
+                            {app_icon(model_toggle_icon(WebModelVariant::Full))}
                             span { "{WebModelVariant::Full.display_name()}" }
                         }
                     }
@@ -147,7 +165,7 @@ pub fn ResultPanel(
                                 title: "Copy classification JSON",
                                 disabled: copy_entries_disabled,
                                 onclick: move |_| on_copy.call(()),
-                                {fa_icon("fa-solid fa-copy")}
+                                {app_icon(IconKind::Copy)}
                             }
                             span {
                                 class: "result-actions-divider",
@@ -160,7 +178,7 @@ pub fn ResultPanel(
                                 title: "Download classification JSON",
                                 disabled: copy_entries_disabled,
                                 onclick: move |_| on_download.call(()),
-                                {fa_icon("fa-solid fa-download")}
+                                {app_icon(IconKind::Download)}
                             }
                         }
                     }
@@ -182,7 +200,7 @@ pub fn ResultPanel(
                         aria_label: "Show previous entry",
                         title: "Show previous entry",
                         onclick: move |_| on_select_previous.call(()),
-                        {fa_icon("fa-solid fa-arrow-left")}
+                        {app_icon(IconKind::ArrowLeft)}
                     }
                     p { class: "result-nav-status",
                         "Showing entry {active_index + 1} of {entry_count}"
@@ -192,7 +210,7 @@ pub fn ResultPanel(
                         aria_label: "Show next entry",
                         title: "Show next entry",
                         onclick: move |_| on_select_next.call(()),
-                        {fa_icon("fa-solid fa-arrow-right")}
+                        {app_icon(IconKind::ArrowRight)}
                     }
                 }
             }
@@ -200,13 +218,153 @@ pub fn ResultPanel(
     }
 }
 
-pub fn fa_icon(class_name: &str) -> Element {
-    let class_name = class_name.to_string();
-    rsx! {
-        i {
-            class: "{class_name}",
-            aria_hidden: "true",
-        }
+fn app_icon(icon: IconKind) -> Element {
+    match icon {
+        IconKind::Repository => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                circle { cx: "6", cy: "18", r: "2" }
+                circle { cx: "10", cy: "6", r: "2" }
+                circle { cx: "18", cy: "8", r: "2" }
+                path { d: "M8 17c3 0 5-2 5-5V8" }
+                path { d: "M12 8h4" }
+            }
+        },
+        IconKind::Mini => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M4 14a8 8 0 1 1 16 0" }
+                path { d: "M12 14l4-4" }
+                path { d: "M12 14h.01" }
+            }
+        },
+        IconKind::Faithful => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M12 3v18" }
+                path { d: "M6 6h12" }
+                path { d: "M7 6l-3 5h6Z" }
+                path { d: "M17 6l-3 5h6Z" }
+                path { d: "M6 18h12" }
+            }
+        },
+        IconKind::Copy => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                rect { x: "9", y: "5", width: "10", height: "14", rx: "2" }
+                path { d: "M15 5V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h1" }
+            }
+        },
+        IconKind::Download => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M12 4v10" }
+                path { d: "m8 10 4 4 4-4" }
+                path { d: "M4 18v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1" }
+            }
+        },
+        IconKind::ArrowLeft => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M19 12H5" }
+                path { d: "m12 19-7-7 7-7" }
+            }
+        },
+        IconKind::ArrowRight => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M5 12h14" }
+                path { d: "m12 5 7 7-7 7" }
+            }
+        },
+        IconKind::Spinner => rsx! {
+            svg {
+                class: "app-icon is-spin",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M21 12a9 9 0 1 1-9-9" }
+            }
+        },
+        IconKind::Error => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M12 3 2.5 20h19Z" }
+                path { d: "M12 9v4" }
+                path { d: "M12 17h.01" }
+            }
+        },
+        IconKind::Warning => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                circle { cx: "12", cy: "12", r: "9" }
+                path { d: "M12 8v5" }
+                path { d: "M12 16h.01" }
+            }
+        },
+        IconKind::Ban => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                circle { cx: "12", cy: "12", r: "9" }
+                path { d: "m8 8 8 8" }
+            }
+        },
+        IconKind::Pathway => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                circle { cx: "6", cy: "18", r: "2" }
+                circle { cx: "10", cy: "6", r: "2" }
+                circle { cx: "18", cy: "8", r: "2" }
+                path { d: "M8 17c3 0 5-2 5-5V8" }
+                path { d: "M12 8h4" }
+            }
+        },
+        IconKind::Superclass => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                rect { x: "4", y: "15", width: "4", height: "4", rx: "1" }
+                rect { x: "10", y: "15", width: "4", height: "4", rx: "1" }
+                rect { x: "16", y: "15", width: "4", height: "4", rx: "1" }
+                rect { x: "10", y: "5", width: "4", height: "4", rx: "1" }
+                path { d: "M12 9v3" }
+                path { d: "M6 12h12" }
+                path { d: "M6 12v3" }
+                path { d: "M12 12v3" }
+                path { d: "M18 12v3" }
+            }
+        },
+        IconKind::Class => rsx! {
+            svg {
+                class: "app-icon",
+                view_box: "0 0 24 24",
+                fill: "none",
+                path { d: "M7 7h6l4 4v6l-4 4H7l-4-4v-6Z" }
+                path { d: "m13 7 4 4" }
+            }
+        },
     }
 }
 
@@ -234,9 +392,9 @@ fn render_result_state(state: &BatchState, active_entry: Option<&BatchEntry>) ->
 fn render_loading_state(progress: &LoadingState) -> Element {
     rsx! {
         div { class: "loading-card",
-            div { class: "loading-head",
-                div { class: "state-icon",
-                    {fa_icon("fa-solid fa-spinner fa-spin")}
+                div { class: "loading-head",
+                    div { class: "state-icon",
+                    {app_icon(IconKind::Spinner)}
                 }
                 p { class: "empty-title", "{progress.label}" }
             }
@@ -268,7 +426,7 @@ fn render_fatal_state(error: &str) -> Element {
     rsx! {
         div { class: "empty-state error-state",
             div { class: "state-icon error-icon",
-                {fa_icon("fa-solid fa-triangle-exclamation")}
+                {app_icon(IconKind::Error)}
             }
             p { class: "empty-title", "Classifier could not run" }
             p { class: "panel-copy",
@@ -283,7 +441,7 @@ fn render_invalid_smiles_state(error: &str) -> Element {
     rsx! {
         div { class: "empty-state error-state",
             div { class: "state-icon error-icon",
-                {fa_icon("fa-solid fa-circle-exclamation")}
+                {app_icon(IconKind::Warning)}
             }
             p { class: "empty-title", "Invalid SMILES" }
             p { class: "panel-copy",
@@ -298,7 +456,7 @@ fn render_unclassified_state() -> Element {
     rsx! {
         div { class: "empty-state",
             div { class: "state-icon",
-                {fa_icon("fa-solid fa-ban")}
+                {app_icon(IconKind::Ban)}
             }
             p { class: "empty-title", "No classification for this case" }
             p { class: "panel-copy",
@@ -332,7 +490,7 @@ fn render_labeled_result(entry: &BatchEntry) -> Element {
     rsx! {
         {label_group(
             "Pathways",
-            "fa-solid fa-route",
+            IconKind::Pathway,
             &visible_pathways,
             GroupKind::Pathway,
             overview,
@@ -340,7 +498,7 @@ fn render_labeled_result(entry: &BatchEntry) -> Element {
         if !entry.labels.superclasses.is_empty() {
             {label_group(
                 "Superclasses",
-                "fa-solid fa-sitemap",
+                IconKind::Superclass,
                 &visible_superclasses,
                 GroupKind::Superclass,
                 overview,
@@ -349,7 +507,7 @@ fn render_labeled_result(entry: &BatchEntry) -> Element {
         if !entry.labels.classes.is_empty() {
             {label_group(
                 "Classes",
-                "fa-solid fa-tags",
+                IconKind::Class,
                 &visible_classes,
                 GroupKind::Class,
                 overview,
@@ -401,7 +559,7 @@ fn format_eta(total_seconds: u64) -> String {
 
 fn label_group(
     title: &str,
-    icon_class: &'static str,
+    icon_class: IconKind,
     labels: &[VisibleLabel],
     group_kind: GroupKind,
     overview: &WebOverview,
@@ -410,7 +568,7 @@ fn label_group(
         section { class: "section-card",
             div { class: "section-head",
                 h3 { class: "title-with-icon",
-                    {fa_icon(icon_class)}
+                    {app_icon(icon_class)}
                     span { "{title}" }
                 }
             }
@@ -436,10 +594,10 @@ fn label_group(
     }
 }
 
-fn model_toggle_icon_class(model: WebModelVariant) -> &'static str {
+fn model_toggle_icon(model: WebModelVariant) -> IconKind {
     match model {
-        WebModelVariant::MiniShared => "fa-solid fa-gauge-high",
-        WebModelVariant::Full => "fa-solid fa-scale-balanced",
+        WebModelVariant::MiniShared => IconKind::Mini,
+        WebModelVariant::Full => IconKind::Faithful,
     }
 }
 
