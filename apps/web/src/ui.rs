@@ -220,151 +220,165 @@ pub fn ResultPanel(
 
 fn app_icon(icon: IconKind) -> Element {
     match icon {
-        IconKind::Repository => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                circle { cx: "6", cy: "18", r: "2" }
-                circle { cx: "10", cy: "6", r: "2" }
-                circle { cx: "18", cy: "8", r: "2" }
-                path { d: "M8 17c3 0 5-2 5-5V8" }
-                path { d: "M12 8h4" }
-            }
-        },
-        IconKind::Mini => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M4 14a8 8 0 1 1 16 0" }
-                path { d: "M12 14l4-4" }
-                path { d: "M12 14h.01" }
-            }
-        },
-        IconKind::Faithful => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M12 3v18" }
-                path { d: "M6 6h12" }
-                path { d: "M7 6l-3 5h6Z" }
-                path { d: "M17 6l-3 5h6Z" }
-                path { d: "M6 18h12" }
-            }
-        },
-        IconKind::Copy => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                rect { x: "9", y: "5", width: "10", height: "14", rx: "2" }
-                path { d: "M15 5V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h1" }
-            }
-        },
-        IconKind::Download => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M12 4v10" }
-                path { d: "m8 10 4 4 4-4" }
-                path { d: "M4 18v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1" }
-            }
-        },
-        IconKind::ArrowLeft => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M19 12H5" }
-                path { d: "m12 19-7-7 7-7" }
-            }
-        },
-        IconKind::ArrowRight => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M5 12h14" }
-                path { d: "m12 5 7 7-7 7" }
-            }
-        },
-        IconKind::Spinner => rsx! {
-            svg {
-                class: "app-icon is-spin",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M21 12a9 9 0 1 1-9-9" }
-            }
-        },
-        IconKind::Error => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M12 3 2.5 20h19Z" }
-                path { d: "M12 9v4" }
-                path { d: "M12 17h.01" }
-            }
-        },
-        IconKind::Warning => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                circle { cx: "12", cy: "12", r: "9" }
-                path { d: "M12 8v5" }
-                path { d: "M12 16h.01" }
-            }
-        },
-        IconKind::Ban => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                circle { cx: "12", cy: "12", r: "9" }
-                path { d: "m8 8 8 8" }
-            }
-        },
-        IconKind::Pathway => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                circle { cx: "6", cy: "18", r: "2" }
-                circle { cx: "10", cy: "6", r: "2" }
-                circle { cx: "18", cy: "8", r: "2" }
-                path { d: "M8 17c3 0 5-2 5-5V8" }
-                path { d: "M12 8h4" }
-            }
-        },
-        IconKind::Superclass => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                rect { x: "4", y: "15", width: "4", height: "4", rx: "1" }
-                rect { x: "10", y: "15", width: "4", height: "4", rx: "1" }
-                rect { x: "16", y: "15", width: "4", height: "4", rx: "1" }
-                rect { x: "10", y: "5", width: "4", height: "4", rx: "1" }
-                path { d: "M12 9v3" }
-                path { d: "M6 12h12" }
-                path { d: "M6 12v3" }
-                path { d: "M12 12v3" }
-                path { d: "M18 12v3" }
-            }
-        },
-        IconKind::Class => rsx! {
-            svg {
-                class: "app-icon",
-                view_box: "0 0 24 24",
-                fill: "none",
-                path { d: "M7 7h6l4 4v6l-4 4H7l-4-4v-6Z" }
-                path { d: "m13 7 4 4" }
-            }
-        },
+        IconKind::Repository => repository_icon(),
+        IconKind::Mini => mini_icon(),
+        IconKind::Faithful => faithful_icon(),
+        IconKind::Copy => copy_icon(),
+        IconKind::Download => download_icon(),
+        IconKind::ArrowLeft => arrow_left_icon(),
+        IconKind::ArrowRight => arrow_right_icon(),
+        IconKind::Spinner => spinner_icon(),
+        IconKind::Error => error_icon(),
+        IconKind::Warning => warning_icon(),
+        IconKind::Ban => ban_icon(),
+        IconKind::Pathway => pathway_icon(),
+        IconKind::Superclass => superclass_icon(),
+        IconKind::Class => class_icon(),
+    }
+}
+
+fn repository_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            circle { cx: "6", cy: "18", r: "2" }
+            circle { cx: "10", cy: "6", r: "2" }
+            circle { cx: "18", cy: "8", r: "2" }
+            path { d: "M8 17c3 0 5-2 5-5V8" }
+            path { d: "M12 8h4" }
+        }
+    }
+}
+
+fn mini_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M4 14a8 8 0 1 1 16 0" }
+            path { d: "M12 14l4-4" }
+            path { d: "M12 14h.01" }
+        }
+    }
+}
+
+fn faithful_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M12 3v18" }
+            path { d: "M6 6h12" }
+            path { d: "M7 6l-3 5h6Z" }
+            path { d: "M17 6l-3 5h6Z" }
+            path { d: "M6 18h12" }
+        }
+    }
+}
+
+fn copy_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            rect { x: "9", y: "5", width: "10", height: "14", rx: "2" }
+            path { d: "M15 5V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h1" }
+        }
+    }
+}
+
+fn download_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M12 4v10" }
+            path { d: "m8 10 4 4 4-4" }
+            path { d: "M4 18v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1" }
+        }
+    }
+}
+
+fn arrow_left_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M19 12H5" }
+            path { d: "m12 19-7-7 7-7" }
+        }
+    }
+}
+
+fn arrow_right_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M5 12h14" }
+            path { d: "m12 5 7 7-7 7" }
+        }
+    }
+}
+
+fn spinner_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon is-spin", view_box: "0 0 24 24", fill: "none",
+            path { d: "M21 12a9 9 0 1 1-9-9" }
+        }
+    }
+}
+
+fn error_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M12 3 2.5 20h19Z" }
+            path { d: "M12 9v4" }
+            path { d: "M12 17h.01" }
+        }
+    }
+}
+
+fn warning_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            circle { cx: "12", cy: "12", r: "9" }
+            path { d: "M12 8v5" }
+            path { d: "M12 16h.01" }
+        }
+    }
+}
+
+fn ban_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            circle { cx: "12", cy: "12", r: "9" }
+            path { d: "m8 8 8 8" }
+        }
+    }
+}
+
+fn pathway_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            circle { cx: "6", cy: "18", r: "2" }
+            circle { cx: "10", cy: "6", r: "2" }
+            circle { cx: "18", cy: "8", r: "2" }
+            path { d: "M8 17c3 0 5-2 5-5V8" }
+            path { d: "M12 8h4" }
+        }
+    }
+}
+
+fn superclass_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            rect { x: "4", y: "15", width: "4", height: "4", rx: "1" }
+            rect { x: "10", y: "15", width: "4", height: "4", rx: "1" }
+            rect { x: "16", y: "15", width: "4", height: "4", rx: "1" }
+            rect { x: "10", y: "5", width: "4", height: "4", rx: "1" }
+            path { d: "M12 9v3" }
+            path { d: "M6 12h12" }
+            path { d: "M6 12v3" }
+            path { d: "M12 12v3" }
+            path { d: "M18 12v3" }
+        }
+    }
+}
+
+fn class_icon() -> Element {
+    rsx! {
+        svg { class: "app-icon", view_box: "0 0 24 24", fill: "none",
+            path { d: "M7 7h6l4 4v6l-4 4H7l-4-4v-6Z" }
+            path { d: "m13 7 4 4" }
+        }
     }
 }
 

@@ -18,7 +18,7 @@ arrow-array = "56.2.0"
 arrow-schema = "56.2.0"
 burn = { version = "=0.20.1", default-features = false }
 clap = { version = "4.5.39", features = ["derive"] }
-dioxus = "=0.7.5"
+dioxus = "=0.7.6"
 finge-rs = { git = "https://github.com/earth-metabolome-initiative/finge-rs", branch = "main", default-features = false, features = ["smiles-support"] }
 half = "2.7.1"
 indicatif = "0.18.4"

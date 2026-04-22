@@ -1,6 +1,7 @@
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    time::{Duration, Instant},
 };
 
 use dioxus::prelude::*;
@@ -63,7 +64,30 @@ struct LoadingControls {
     loading_visible: Rc<Cell<bool>>,
     loading_timeout_id: Rc<Cell<Option<i32>>>,
     pending_loading_state: Rc<RefCell<Option<LoadingState>>>,
-    request_started_at_ms: Rc<Cell<Option<f64>>>,
+    request_started_at: Rc<RefCell<Option<Instant>>>,
+}
+
+impl LoadingControls {
+    fn clear_request_timing(&self) {
+        self.request_started_at.borrow_mut().take();
+    }
+
+    fn reset_loading_state(&self) {
+        self.request_inflight.set(None);
+        self.loading_visible.set(false);
+        self.clear_request_timing();
+        self.pending_loading_state.borrow_mut().take();
+        clear_loading_timeout(&self.loading_timeout_id);
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn request_started_at(&self) -> Option<Instant> {
+        self.request_started_at.borrow().as_ref().copied()
+    }
+
+    fn mark_request_started(&self) {
+        self.request_started_at.borrow_mut().replace(Instant::now());
+    }
 }
 
 #[derive(Clone)]
@@ -221,11 +245,7 @@ impl ClassifierHandle {
 impl ClassifierRuntime {
     fn clear_classification(&self) {
         let token = next_request_token(&self.request_token);
-        self.loading.request_inflight.set(None);
-        self.loading.loading_visible.set(false);
-        self.loading.request_started_at_ms.set(None);
-        self.loading.pending_loading_state.borrow_mut().take();
-        clear_loading_timeout(&self.loading.loading_timeout_id);
+        self.loading.reset_loading_state();
         let mut batch_state = self.batch_state;
         let mut selected_index = self.selected_index;
         selected_index.set(0);
@@ -246,14 +266,13 @@ impl ClassifierRuntime {
         self.loading.request_inflight.set(Some(token));
         self.loading.loading_visible.set(false);
         self.loading.pending_loading_state.borrow_mut().take();
-        self.loading.request_started_at_ms.set(Some(now_ms()));
+        self.loading.mark_request_started();
         clear_loading_timeout(&self.loading.loading_timeout_id);
         selected_index.set(0);
 
         let lines = parse_batch_smiles(input);
         if lines.is_empty() {
-            self.loading.request_inflight.set(None);
-            self.loading.request_started_at_ms.set(None);
+            self.loading.reset_loading_state();
             batch_state.set(BatchState::Empty);
             let _ignored =
                 send_worker_request(&self.worker_client, &WebWorkerRequest::Cancel { token });
@@ -298,13 +317,13 @@ pub fn use_classifier(initial_input: impl FnOnce() -> String + 'static) -> Class
     let loading_visible = use_hook(|| Rc::new(Cell::new(false)));
     let loading_timeout_id = use_hook(|| Rc::new(Cell::new(None::<i32>)));
     let pending_loading_state = use_hook(|| Rc::new(RefCell::new(None::<LoadingState>)));
-    let request_started_at_ms = use_hook(|| Rc::new(Cell::new(None::<f64>)));
+    let request_started_at = use_hook(|| Rc::new(RefCell::new(None::<Instant>)));
     let loading = LoadingControls {
         request_inflight: request_inflight.clone(),
         loading_visible: loading_visible.clone(),
         loading_timeout_id: loading_timeout_id.clone(),
         pending_loading_state: pending_loading_state.clone(),
-        request_started_at_ms: request_started_at_ms.clone(),
+        request_started_at: request_started_at.clone(),
     };
     let worker_client = use_hook({
         let request_token = request_token.clone();
@@ -348,114 +367,22 @@ struct ClassifierWorker {
 #[cfg(target_arch = "wasm32")]
 impl ClassifierWorker {
     fn new(
-        mut batch_state: Signal<BatchState>,
+        batch_state: Signal<BatchState>,
         request_token: Rc<Cell<u64>>,
         loading: LoadingControls,
     ) -> Result<Self, String> {
-        let options = WorkerOptions::new();
-        options.set_type(WorkerType::Module);
-        let worker = Worker::new_with_options(CLASSIFIER_WORKER_SCRIPT, &options)
-            .map_err(|error| format!("failed to start worker: {}", js_error_text(&error)))?;
+        let worker = Self::create_worker()?;
         let ready = Rc::new(Cell::new(false));
         let pending_request = Rc::new(RefCell::new(None::<WebWorkerRequest>));
-
-        let onmessage_loading = loading.clone();
-        let onmessage_ready = ready.clone();
-        let onmessage_pending_request = pending_request.clone();
-        let onmessage_worker = worker.clone();
-        let onmessage = Closure::wrap(Box::new(move |event: MessageEvent| {
-            let response = serde_wasm_bindgen::from_value::<WebWorkerResponse>(event.data());
-            let response = match response {
-                Ok(response) => response,
-                Err(error) => {
-                    onmessage_loading.request_inflight.set(None);
-                    onmessage_loading.loading_visible.set(false);
-                    onmessage_loading.pending_loading_state.borrow_mut().take();
-                    clear_loading_timeout(&onmessage_loading.loading_timeout_id);
-                    batch_state.set(BatchState::Fatal(format!(
-                        "failed to decode worker response: {error}"
-                    )));
-                    return;
-                }
-            };
-
-            if matches!(response, WebWorkerResponse::Ready) {
-                onmessage_ready.set(true);
-                if let Some(request) = onmessage_pending_request.borrow_mut().take()
-                    && let Ok(payload) = serde_wasm_bindgen::to_value(&request)
-                {
-                    let _ = onmessage_worker.post_message(&payload);
-                }
-                return;
-            }
-
-            if response.token() != request_token.get() {
-                return;
-            }
-
-            match response {
-                WebWorkerResponse::Progress {
-                    label,
-                    completed,
-                    total,
-                    ..
-                } => {
-                    let eta_seconds = estimate_loading_eta_seconds(
-                        &label,
-                        completed,
-                        total,
-                        onmessage_loading.request_started_at_ms.get(),
-                    );
-                    let next_loading_state = LoadingState {
-                        label,
-                        completed,
-                        total,
-                        eta_seconds,
-                        suggest_native: should_suggest_native_run(eta_seconds),
-                    };
-                    if onmessage_loading.loading_visible.get() {
-                        clear_loading_timeout(&onmessage_loading.loading_timeout_id);
-                        batch_state.set(BatchState::Loading(next_loading_state));
-                    } else {
-                        onmessage_loading
-                            .pending_loading_state
-                            .borrow_mut()
-                            .replace(next_loading_state);
-                    }
-                }
-                WebWorkerResponse::Complete { entries, .. } => {
-                    onmessage_loading.request_inflight.set(None);
-                    onmessage_loading.loading_visible.set(false);
-                    onmessage_loading.request_started_at_ms.set(None);
-                    onmessage_loading.pending_loading_state.borrow_mut().take();
-                    clear_loading_timeout(&onmessage_loading.loading_timeout_id);
-                    batch_state.set(BatchState::Ready(Rc::new(BatchClassification { entries })));
-                }
-                WebWorkerResponse::Fatal { message, .. } => {
-                    onmessage_loading.request_inflight.set(None);
-                    onmessage_loading.loading_visible.set(false);
-                    onmessage_loading.request_started_at_ms.set(None);
-                    onmessage_loading.pending_loading_state.borrow_mut().take();
-                    clear_loading_timeout(&onmessage_loading.loading_timeout_id);
-                    batch_state.set(BatchState::Fatal(message));
-                }
-                WebWorkerResponse::Ready => unreachable!("ready messages return early"),
-            }
-        }) as Box<dyn FnMut(MessageEvent)>);
-        worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
-
-        let onerror_loading = loading;
-        let onerror = Closure::wrap(Box::new(move |event: ErrorEvent| {
-            onerror_loading.request_inflight.set(None);
-            onerror_loading.loading_visible.set(false);
-            onerror_loading.request_started_at_ms.set(None);
-            clear_loading_timeout(&onerror_loading.loading_timeout_id);
-            batch_state.set(BatchState::Fatal(format!(
-                "classifier worker crashed: {}",
-                event.message()
-            )));
-        }) as Box<dyn FnMut(ErrorEvent)>);
-        worker.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+        let onmessage = Self::install_onmessage(
+            &worker,
+            batch_state,
+            request_token,
+            loading.clone(),
+            ready.clone(),
+            pending_request.clone(),
+        );
+        let onerror = Self::install_onerror(&worker, batch_state, loading);
 
         Ok(Self {
             worker,
@@ -464,6 +391,125 @@ impl ClassifierWorker {
             onmessage,
             onerror,
         })
+    }
+
+    fn create_worker() -> Result<Worker, String> {
+        let options = WorkerOptions::new();
+        options.set_type(WorkerType::Module);
+        Worker::new_with_options(CLASSIFIER_WORKER_SCRIPT, &options)
+            .map_err(|error| format!("failed to start worker: {}", js_error_text(&error)))
+    }
+
+    fn install_onmessage(
+        worker: &Worker,
+        mut batch_state: Signal<BatchState>,
+        request_token: Rc<Cell<u64>>,
+        loading: LoadingControls,
+        ready: Rc<Cell<bool>>,
+        pending_request: Rc<RefCell<Option<WebWorkerRequest>>>,
+    ) -> Closure<dyn FnMut(MessageEvent)> {
+        let onmessage_worker = worker.clone();
+        let onmessage = Closure::wrap(Box::new(move |event: MessageEvent| {
+            let response = match serde_wasm_bindgen::from_value::<WebWorkerResponse>(event.data()) {
+                Ok(response) => response,
+                Err(error) => {
+                    loading.reset_loading_state();
+                    batch_state.set(BatchState::Fatal(format!(
+                        "failed to decode worker response: {error}"
+                    )));
+                    return;
+                }
+            };
+
+            if matches!(response, WebWorkerResponse::Ready) {
+                ready.set(true);
+                Self::flush_pending_request(&pending_request, &onmessage_worker);
+                return;
+            }
+
+            if response.token() != request_token.get() {
+                return;
+            }
+
+            Self::handle_worker_response(response, &loading, &mut batch_state);
+        }) as Box<dyn FnMut(MessageEvent)>);
+        worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+        onmessage
+    }
+
+    fn install_onerror(
+        worker: &Worker,
+        mut batch_state: Signal<BatchState>,
+        loading: LoadingControls,
+    ) -> Closure<dyn FnMut(ErrorEvent)> {
+        let onerror = Closure::wrap(Box::new(move |event: ErrorEvent| {
+            loading.reset_loading_state();
+            batch_state.set(BatchState::Fatal(format!(
+                "classifier worker crashed: {}",
+                event.message()
+            )));
+        }) as Box<dyn FnMut(ErrorEvent)>);
+        worker.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+        onerror
+    }
+
+    fn flush_pending_request(pending_request: &RefCell<Option<WebWorkerRequest>>, worker: &Worker) {
+        if let Some(request) = pending_request.borrow_mut().take()
+            && let Ok(payload) = serde_wasm_bindgen::to_value(&request)
+        {
+            let _ = worker.post_message(&payload);
+        }
+    }
+
+    fn handle_worker_response(
+        response: WebWorkerResponse,
+        loading: &LoadingControls,
+        batch_state: &mut Signal<BatchState>,
+    ) {
+        match response {
+            WebWorkerResponse::Progress {
+                label,
+                completed,
+                total,
+                ..
+            } => Self::handle_progress(label, completed, total, loading, batch_state),
+            WebWorkerResponse::Complete { entries, .. } => {
+                loading.reset_loading_state();
+                batch_state.set(BatchState::Ready(Rc::new(BatchClassification { entries })));
+            }
+            WebWorkerResponse::Fatal { message, .. } => {
+                loading.reset_loading_state();
+                batch_state.set(BatchState::Fatal(message));
+            }
+            WebWorkerResponse::Ready => unreachable!("ready messages return early"),
+        }
+    }
+
+    fn handle_progress(
+        label: String,
+        completed: usize,
+        total: usize,
+        loading: &LoadingControls,
+        batch_state: &mut Signal<BatchState>,
+    ) {
+        let eta_seconds =
+            estimate_loading_eta_seconds(&label, completed, total, loading.request_started_at());
+        let next_loading_state = LoadingState {
+            label,
+            completed,
+            total,
+            eta_seconds,
+            suggest_native: should_suggest_native_run(eta_seconds),
+        };
+        if loading.loading_visible.get() {
+            clear_loading_timeout(&loading.loading_timeout_id);
+            batch_state.set(BatchState::Loading(next_loading_state));
+        } else {
+            loading
+                .pending_loading_state
+                .borrow_mut()
+                .replace(next_loading_state);
+        }
     }
 
     fn post(&self, message: &WebWorkerRequest) -> Result<(), String> {
@@ -647,21 +693,17 @@ fn estimate_loading_eta_seconds(
     label: &str,
     completed: usize,
     total: usize,
-    request_started_at_ms: Option<f64>,
+    request_started_at: Option<Instant>,
 ) -> Option<u64> {
     if !label.starts_with("Classifying ") || completed == 0 || completed >= total {
         return None;
     }
-    let started_at_ms = request_started_at_ms?;
-    let elapsed_ms = now_ms() - started_at_ms;
-    if elapsed_ms <= 0.0 {
+    let elapsed = request_started_at?.elapsed();
+    if elapsed.is_zero() {
         return None;
     }
 
-    let completed_f64 = completed as f64;
-    let remaining = total.saturating_sub(completed) as f64;
-    let eta_seconds = ((elapsed_ms / 1000.0) * (remaining / completed_f64)).ceil();
-    Some(eta_seconds.max(1.0) as u64)
+    estimate_loading_eta_from_elapsed(completed, total, elapsed)
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -672,19 +714,29 @@ fn should_suggest_native_run(eta_seconds: Option<u64>) -> bool {
     eta_seconds.is_some_and(|seconds| seconds > NATIVE_HINT_THRESHOLD_SECONDS)
 }
 
-#[cfg(target_arch = "wasm32")]
-fn now_ms() -> f64 {
-    js_sys::Date::now()
-}
+fn estimate_loading_eta_from_elapsed(
+    completed: usize,
+    total: usize,
+    elapsed: Duration,
+) -> Option<u64> {
+    if completed == 0 || completed >= total || elapsed.is_zero() {
+        return None;
+    }
 
-#[cfg(not(target_arch = "wasm32"))]
-fn now_ms() -> f64 {
-    0.0
+    let completed_units = u128::from(u64::try_from(completed).ok()?);
+    let remaining_units = u128::from(u64::try_from(total.saturating_sub(completed)).ok()?);
+    let elapsed_ms = elapsed.as_millis();
+    let eta_ms = (elapsed_ms.saturating_mul(remaining_units)).div_ceil(completed_units);
+    let eta_seconds = eta_ms.div_ceil(1_000).max(1);
+    u64::try_from(eta_seconds).ok()
 }
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use std::{
+        rc::Rc,
+        time::{Duration, Instant},
+    };
 
     use super::{
         BatchClassification, BatchState, MAX_WEB_SMILES_LINES, count_non_empty_smiles_lines,
@@ -726,14 +778,24 @@ mod tests {
 
     #[test]
     fn eta_is_only_reported_for_classification_progress() {
-        let eta = estimate_loading_eta_seconds("Loading model", 1, 10, Some(-4_000.0));
+        let eta = estimate_loading_eta_seconds(
+            "Loading model",
+            1,
+            10,
+            Some(Instant::now() - Duration::from_secs(4)),
+        );
 
         assert_eq!(eta, None);
     }
 
     #[test]
     fn eta_is_estimated_from_elapsed_time() {
-        let eta = estimate_loading_eta_seconds("Classifying 10 SMILES", 2, 10, Some(-2_000.0));
+        let eta = estimate_loading_eta_seconds(
+            "Classifying 10 SMILES",
+            2,
+            10,
+            Some(Instant::now() - Duration::from_secs(2)),
+        );
 
         assert_eq!(eta, Some(8));
     }

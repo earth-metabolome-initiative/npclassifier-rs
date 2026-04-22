@@ -50,10 +50,10 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli --locked --version 0.7.5
+        run: cargo install dioxus-cli --locked --version 0.7.6
 
       - name: Build web app
-        run: dx build --platform web --release --package npclassifier-web --base-path /
+        run: dx build --platform web --release --package npclassifier-web
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

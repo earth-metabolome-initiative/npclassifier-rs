@@ -4,7 +4,17 @@ sub_package = "npclassifier-web"
 asset_dir = "apps/web/public"
 
 [web.app]
+base_path = "/"
 title = "NPClassifier | Browser-side natural product classification"
+
+[web.watcher]
+reload_html = true
+watch_path = [
+    "Dioxus.toml",
+    "apps/web/index.html",
+    "apps/web/public",
+    "apps/web/src",
+]
 
 [web.resource]
 style = [

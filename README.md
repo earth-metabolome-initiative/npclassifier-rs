@@ -46,11 +46,31 @@ It also supports:
 
 - `--base-url` for a remote packed bundle
 - `--output` to write results to a file instead of stdout
-- `--format json` or `--format jsonl`
+- `--format json`, `--format jsonl`, or `--format parquet`
 - `--batch-size` to control streamed classification chunks
 - `--threads` to cap rayon parallelism
 - `--progress` to emit progress updates on stderr
 - explicit per-head threshold overrides
+
+Parquet output writes a compact columnar schema with:
+- `smiles`
+- `error`
+- `pathways`
+- `superclasses`
+- `classes`
+- `is_glycoside`
+
+Example:
+
+```bash
+cargo npc \
+  --models /path/to/models/mini-shared \
+  --input smiles.txt \
+  --output results.parquet \
+  --format parquet \
+  --threads 8 \
+  --progress
+```
 
 ## Library
 
@@ -63,8 +83,12 @@ use std::path::PathBuf;
 
 use npclassifier_core::{PackedClassifierBuilder, PackedModelVariant};
 
-let model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("../../apps/web/public/models/mini-shared");
+let model_dir = std::iter::successors(Some(std::env::current_dir()?), |path| {
+    path.parent().map(|parent| parent.to_path_buf())
+})
+.map(|root| root.join("apps/web/public/models/mini-shared"))
+.find(|path| path.exists())
+.ok_or("could not find checked-in mini-shared model bundle")?;
 
 let classifier = PackedClassifierBuilder::new()
     .with_local_dir(&model_dir)
