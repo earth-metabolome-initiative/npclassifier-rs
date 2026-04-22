@@ -1,10 +1,12 @@
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use dioxus::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use js_sys::Date;
 #[cfg(target_arch = "wasm32")]
 use npclassifier_core::WebWorkerResponse;
 use npclassifier_core::{WebBatchEntry as BatchEntry, WebModelVariant, WebWorkerRequest};
@@ -20,6 +22,11 @@ const CLASSIFIER_WORKER_SCRIPT: &str = "/generated/classifier-worker.js";
 const LOADING_DELAY_MS: u64 = 600;
 pub const MAX_WEB_INPUT_BYTES: usize = 1_048_576;
 pub const MAX_WEB_SMILES_LINES: usize = 10_000;
+
+#[cfg(target_arch = "wasm32")]
+type RequestStartedAt = f64;
+#[cfg(not(target_arch = "wasm32"))]
+type RequestStartedAt = std::time::Instant;
 
 #[derive(Clone, PartialEq)]
 pub struct BatchClassification {
@@ -64,7 +71,7 @@ struct LoadingControls {
     loading_visible: Rc<Cell<bool>>,
     loading_timeout_id: Rc<Cell<Option<i32>>>,
     pending_loading_state: Rc<RefCell<Option<LoadingState>>>,
-    request_started_at: Rc<RefCell<Option<Instant>>>,
+    request_started_at: Rc<RefCell<Option<RequestStartedAt>>>,
 }
 
 impl LoadingControls {
@@ -81,12 +88,14 @@ impl LoadingControls {
     }
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
-    fn request_started_at(&self) -> Option<Instant> {
+    fn request_started_at(&self) -> Option<RequestStartedAt> {
         self.request_started_at.borrow().as_ref().copied()
     }
 
     fn mark_request_started(&self) {
-        self.request_started_at.borrow_mut().replace(Instant::now());
+        self.request_started_at
+            .borrow_mut()
+            .replace(request_now_timestamp());
     }
 }
 
@@ -317,7 +326,7 @@ pub fn use_classifier(initial_input: impl FnOnce() -> String + 'static) -> Class
     let loading_visible = use_hook(|| Rc::new(Cell::new(false)));
     let loading_timeout_id = use_hook(|| Rc::new(Cell::new(None::<i32>)));
     let pending_loading_state = use_hook(|| Rc::new(RefCell::new(None::<LoadingState>)));
-    let request_started_at = use_hook(|| Rc::new(RefCell::new(None::<Instant>)));
+    let request_started_at = use_hook(|| Rc::new(RefCell::new(None::<RequestStartedAt>)));
     let loading = LoadingControls {
         request_inflight: request_inflight.clone(),
         loading_visible: loading_visible.clone(),
@@ -693,12 +702,12 @@ fn estimate_loading_eta_seconds(
     label: &str,
     completed: usize,
     total: usize,
-    request_started_at: Option<Instant>,
+    request_started_at: Option<RequestStartedAt>,
 ) -> Option<u64> {
     if !label.starts_with("Classifying ") || completed == 0 || completed >= total {
         return None;
     }
-    let elapsed = request_started_at?.elapsed();
+    let elapsed = elapsed_since_request_started(request_started_at?)?;
     if elapsed.is_zero() {
         return None;
     }
@@ -729,6 +738,33 @@ fn estimate_loading_eta_from_elapsed(
     let eta_ms = (elapsed_ms.saturating_mul(remaining_units)).div_ceil(completed_units);
     let eta_seconds = eta_ms.div_ceil(1_000).max(1);
     u64::try_from(eta_seconds).ok()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn request_now_timestamp() -> RequestStartedAt {
+    web_sys::window()
+        .and_then(|window| window.performance())
+        .map(|performance| performance.now())
+        .unwrap_or_else(Date::now)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn request_now_timestamp() -> RequestStartedAt {
+    std::time::Instant::now()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn elapsed_since_request_started(request_started_at: RequestStartedAt) -> Option<Duration> {
+    let elapsed_ms = request_now_timestamp() - request_started_at;
+    if !elapsed_ms.is_finite() || elapsed_ms <= 0.0 {
+        return None;
+    }
+    Some(Duration::from_secs_f64(elapsed_ms / 1_000.0))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn elapsed_since_request_started(request_started_at: RequestStartedAt) -> Option<Duration> {
+    Some(request_started_at.elapsed())
 }
 
 #[cfg(test)]

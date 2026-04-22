@@ -183,6 +183,6 @@ fn copy_file(source: &Path, destination: &Path) -> Result<(), String> {
 fn worker_loader_script() -> &'static str {
     r#"import init from "./npclassifier_web_worker.js";
 
-await init(new URL("./npclassifier_web_worker_bg.wasm", import.meta.url));
+await init({ module_or_path: new URL("./npclassifier_web_worker_bg.wasm", import.meta.url) });
 "#
 }
