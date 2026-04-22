@@ -13,7 +13,7 @@ The repository stays focused on a faithful `NPClassifier` line. The main practic
 
 ## CLI
 
-The user-facing CLI is the `cargo npc` subcommand. It reads one SMILES per line, classifies them in parallel, and prints JSON to stdout.
+The user-facing CLI is the `cargo npc` subcommand. It reads one SMILES per line, classifies them in parallel in streamed batches, and writes results as JSON Lines by default.
 
 From this repository during development:
 
@@ -45,7 +45,11 @@ printf 'CCO\nC1=CC=CC=C1\n' | cargo run --release -p cargo-npc -- \
 It also supports:
 
 - `--base-url` for a remote packed bundle
+- `--output` to write results to a file instead of stdout
+- `--format json` or `--format jsonl`
+- `--batch-size` to control streamed classification chunks
 - `--threads` to cap rayon parallelism
+- `--progress` to emit progress updates on stderr
 - explicit per-head threshold overrides
 
 ## Library
