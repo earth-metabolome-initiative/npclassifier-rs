@@ -205,6 +205,15 @@ button {
     font-size: 0.94rem;
 }
 
+.input-note {
+    margin-top: 0.75rem;
+    padding: 0.8rem 0.95rem;
+    border: 1px solid rgba(157, 65, 51, 0.16);
+    border-radius: 0.95rem;
+    background: rgba(157, 65, 51, 0.08);
+    color: #7a3328;
+}
+
 .smiles-input {
     width: 100%;
     min-height: 16rem;

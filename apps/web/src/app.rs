@@ -5,7 +5,7 @@ use npclassifier_core::MockFingerprintRecord;
 
 use crate::{
     actions::{copy_entries_as_json, download_entries_as_json},
-    classifier::use_classifier,
+    classifier::{MAX_WEB_INPUT_BYTES, use_classifier},
     hooks::{use_entry_keyboard_navigation, use_transient_message},
     ui::{Header, InputPanel, ResultPanel},
 };
@@ -91,7 +91,9 @@ pub fn App() -> Element {
             section { class: "layout",
                 InputPanel {
                     current_input,
+                    input_notice: view.input_notice,
                     placeholder: PLACEHOLDER_SMILES,
+                    max_input_bytes: MAX_WEB_INPUT_BYTES,
                     current_model,
                     mini_tooltip: MINI_MODEL_TOOLTIP,
                     faithful_tooltip: FAITHFUL_MODEL_TOOLTIP,

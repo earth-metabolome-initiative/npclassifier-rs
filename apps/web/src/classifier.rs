@@ -17,6 +17,8 @@ const INITIAL_MODEL_LOAD_TOTAL: usize = 6;
 const CLASSIFIER_WORKER_SCRIPT: &str = "/generated/classifier-worker.js";
 #[cfg(target_arch = "wasm32")]
 const LOADING_DELAY_MS: u64 = 600;
+pub const MAX_WEB_INPUT_BYTES: usize = 1_048_576;
+pub const MAX_WEB_SMILES_LINES: usize = 10_000;
 
 #[derive(Clone, PartialEq)]
 pub struct BatchClassification {
@@ -77,6 +79,7 @@ struct ClassifierRuntime {
 pub struct ClassifierHandle {
     batch_input: Signal<String>,
     selected_model: Signal<WebModelVariant>,
+    input_notice: Signal<Option<String>>,
     runtime: Rc<ClassifierRuntime>,
 }
 
@@ -85,6 +88,7 @@ pub struct ClassifierView {
     pub active_entry: Option<BatchEntry>,
     pub entry_count: usize,
     pub active_index: usize,
+    pub input_notice: Option<String>,
 }
 
 impl ClassifierHandle {
@@ -118,6 +122,7 @@ impl ClassifierHandle {
             active_entry,
             entry_count,
             active_index,
+            input_notice: self.input_notice.read().clone(),
         }
     }
 
@@ -133,6 +138,20 @@ impl ClassifierHandle {
     }
 
     pub fn handle_input(&self, value: &str) {
+        let mut input_notice = self.input_notice;
+        match validate_web_input(value) {
+            Ok(()) => input_notice.set(None),
+            Err(message) => {
+                input_notice.set(Some(message));
+                if value.len() <= MAX_WEB_INPUT_BYTES {
+                    let mut batch_input = self.batch_input;
+                    batch_input.set(value.to_string());
+                }
+                self.runtime.clear_classification();
+                return;
+            }
+        }
+
         let mut batch_input = self.batch_input;
         batch_input.set(value.to_string());
         self.classify(value, self.current_model(), false);
@@ -187,12 +206,34 @@ impl ClassifierHandle {
         model_variant: WebModelVariant,
         force_loading_immediately: bool,
     ) {
+        let mut input_notice = self.input_notice;
+        if let Err(message) = validate_web_input(input) {
+            input_notice.set(Some(message));
+            self.runtime.clear_classification();
+            return;
+        }
+        input_notice.set(None);
         self.runtime
             .schedule_classification(input, model_variant, force_loading_immediately);
     }
 }
 
 impl ClassifierRuntime {
+    fn clear_classification(&self) {
+        let token = next_request_token(&self.request_token);
+        self.loading.request_inflight.set(None);
+        self.loading.loading_visible.set(false);
+        self.loading.request_started_at_ms.set(None);
+        self.loading.pending_loading_state.borrow_mut().take();
+        clear_loading_timeout(&self.loading.loading_timeout_id);
+        let mut batch_state = self.batch_state;
+        let mut selected_index = self.selected_index;
+        selected_index.set(0);
+        batch_state.set(BatchState::Empty);
+        let _ignored =
+            send_worker_request(&self.worker_client, &WebWorkerRequest::Cancel { token });
+    }
+
     fn schedule_classification(
         &self,
         input: &str,
@@ -249,6 +290,7 @@ impl ClassifierRuntime {
 pub fn use_classifier(initial_input: impl FnOnce() -> String + 'static) -> ClassifierHandle {
     let batch_input = use_signal(initial_input);
     let selected_model = use_signal(WebModelVariant::default);
+    let input_notice = use_signal(|| None::<String>);
     let batch_state = use_signal(|| BatchState::Empty);
     let selected_index = use_signal(|| 0usize);
     let request_token = use_hook(|| Rc::new(Cell::new(0_u64)));
@@ -279,6 +321,7 @@ pub fn use_classifier(initial_input: impl FnOnce() -> String + 'static) -> Class
     let classifier = ClassifierHandle {
         batch_input,
         selected_model,
+        input_notice,
         runtime,
     };
 
@@ -568,6 +611,37 @@ fn parse_batch_smiles(input: &str) -> Vec<String> {
         .collect()
 }
 
+fn validate_web_input(input: &str) -> Result<(), String> {
+    if input.len() > MAX_WEB_INPUT_BYTES {
+        return Err(format!(
+            "The web UI accepts at most {} MiB of SMILES input. For larger batches, use `cargo npc`.",
+            MAX_WEB_INPUT_BYTES / (1024 * 1024)
+        ));
+    }
+
+    let smiles_count = count_non_empty_smiles_lines(input, MAX_WEB_SMILES_LINES + 1);
+    if smiles_count > MAX_WEB_SMILES_LINES {
+        return Err(format!(
+            "This batch contains {smiles_count} SMILES. The web UI accepts at most {MAX_WEB_SMILES_LINES} SMILES per run. For larger batches, use `cargo npc`."
+        ));
+    }
+
+    Ok(())
+}
+
+fn count_non_empty_smiles_lines(input: &str, limit: usize) -> usize {
+    let mut count = 0;
+    for line in input.lines() {
+        if !line.trim().is_empty() {
+            count += 1;
+            if count >= limit {
+                break;
+            }
+        }
+    }
+    count
+}
+
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn estimate_loading_eta_seconds(
     label: &str,
@@ -613,8 +687,9 @@ mod tests {
     use std::rc::Rc;
 
     use super::{
-        BatchClassification, BatchState, estimate_loading_eta_seconds, parse_batch_smiles,
-        should_suggest_native_run,
+        BatchClassification, BatchState, MAX_WEB_SMILES_LINES, count_non_empty_smiles_lines,
+        estimate_loading_eta_seconds, parse_batch_smiles, should_suggest_native_run,
+        validate_web_input,
     };
 
     #[test]
@@ -622,6 +697,23 @@ mod tests {
         let contents = "CCO\n\nC1=CC=CC=C1  \n  \nCC(=O)O\n";
         let parsed = parse_batch_smiles(contents);
         assert_eq!(parsed, vec!["CCO", "C1=CC=CC=C1", "CC(=O)O"]);
+    }
+
+    #[test]
+    fn count_non_empty_smiles_lines_stops_at_limit() {
+        let count = count_non_empty_smiles_lines("CCO\nCCN\nCCC\n", 2);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn validate_web_input_rejects_batches_above_line_cap() {
+        let input = std::iter::repeat_n("CCO", MAX_WEB_SMILES_LINES + 1)
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let error = validate_web_input(&input).expect_err("input should exceed web line cap");
+        assert!(error.contains("web UI accepts at most"));
+        assert!(error.contains("cargo npc"));
     }
 
     #[test]

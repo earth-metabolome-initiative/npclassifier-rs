@@ -45,7 +45,9 @@ pub fn Header(repository_url: &'static str) -> Element {
 #[component]
 pub fn InputPanel(
     current_input: String,
+    input_notice: Option<String>,
     placeholder: &'static str,
+    max_input_bytes: usize,
     current_model: WebModelVariant,
     mini_tooltip: &'static str,
     faithful_tooltip: &'static str,
@@ -95,7 +97,16 @@ pub fn InputPanel(
                 class: "smiles-input",
                 value: current_input,
                 placeholder,
+                maxlength: "{max_input_bytes}",
                 oninput: move |event| on_input.call(event.value()),
+            }
+
+            if let Some(input_notice) = input_notice {
+                p {
+                    class: "panel-copy input-note",
+                    role: "alert",
+                    "{input_notice}"
+                }
             }
         }
     }
