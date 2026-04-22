@@ -48,7 +48,7 @@ pub fn build_copy_json(entries: &[BatchEntry]) -> Result<String, serde_json::Err
         })
         .collect::<Vec<_>>();
 
-    serde_json::to_string_pretty(&copied)
+    serde_json::to_string(&copied)
 }
 
 pub async fn copy_text_to_clipboard(text: String) -> Result<(), String> {
