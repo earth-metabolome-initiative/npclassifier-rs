@@ -20,7 +20,7 @@ env:
 
 jobs:
   coverage:
-    name: Coverage
+    name: Product Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -49,11 +49,19 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          cargo tarpaulin --engine llvm --all-features --workspace --out Xml --timeout 120
+          cargo tarpaulin \
+            --engine llvm \
+            --workspace \
+            --exclude npclassifier-train \
+            --exclude npclassifier-web-worker \
+            --features npclassifier-core/runner \
+            --out Xml \
+            --timeout 120
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: cobertura.xml
+          flags: product
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
