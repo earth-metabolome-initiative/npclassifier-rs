@@ -148,7 +148,6 @@ button {
 }
 
 .panel,
-.section-card,
 .empty-state {
     border: 1px solid var(--line);
     border-radius: 1.2rem;
@@ -193,11 +192,12 @@ button {
     width: 1em;
     height: 1em;
     flex-shrink: 0;
-    stroke: currentColor;
-    stroke-width: 1.85;
-    stroke-linecap: round;
-    stroke-linejoin: round;
     fill: none;
+}
+
+.app-icon-fill {
+    fill: currentColor;
+    stroke: none;
 }
 
 .app-icon.is-spin {
@@ -574,13 +574,18 @@ button {
     font-size: 0.78rem;
 }
 
-.section-card,
 .empty-state {
     padding: 1rem;
 }
 
+.section-card {
+    padding: 0.15rem 0 0;
+}
+
 .section-card + .section-card {
-    margin-top: 0.1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--line);
 }
 
 .predicted-row {

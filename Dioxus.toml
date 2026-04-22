@@ -5,7 +5,7 @@ asset_dir = "apps/web/public"
 
 [web.app]
 base_path = "/"
-title = "NPClassifier | Browser-side natural product classification"
+title = ""
 
 [web.watcher]
 reload_html = true
