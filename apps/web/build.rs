@@ -44,6 +44,7 @@ fn run() -> Result<(), String> {
 
 fn should_skip_worker_build() -> bool {
     env::var_os("CARGO_CFG_COVERAGE").is_some()
+        || env::var_os("NPCLASSIFIER_SKIP_WEB_WORKER_BUILD").is_some()
 }
 
 fn emit_git_commit(workspace_root: &Path) {

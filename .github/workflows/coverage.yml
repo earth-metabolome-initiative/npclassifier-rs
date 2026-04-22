@@ -16,6 +16,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  NPCLASSIFIER_SKIP_WEB_WORKER_BUILD: "1"
 
 jobs:
   coverage:
@@ -30,7 +31,6 @@ jobs:
         run: |
           rustup default stable
           rustup component add llvm-tools-preview
-          rustup target add wasm32-unknown-unknown
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -44,17 +44,16 @@ jobs:
             ${{ runner.os }}-cargo-coverage-${{ hashFiles('**/Cargo.lock') }}-
             ${{ runner.os }}-cargo-
 
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Install cargo-tarpaulin
+        uses: taiki-e/install-action@cargo-tarpaulin
 
       - name: Generate coverage report
         run: |
-          cargo llvm-cov clean --workspace
-          cargo llvm-cov --all-features --workspace --codecov --output-path codecov.json
+          cargo tarpaulin --engine llvm --all-features --workspace --out Xml --timeout 120
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: codecov.json
+          files: cobertura.xml
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
