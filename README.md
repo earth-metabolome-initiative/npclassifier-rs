@@ -19,7 +19,7 @@ From this repository during development:
 
 ```bash
 cargo run --release -p cargo-npc -- \
-  --models /path/to/models/mini-shared \
+  --model mini \
   --input smiles.txt
 ```
 
@@ -32,27 +32,29 @@ cargo install cargo-npc
 Then the same command becomes:
 
 ```bash
-cargo npc --models /path/to/models/mini-shared --input smiles.txt
+cargo npc --model mini --input smiles.txt
 ```
 
 From stdin:
 
 ```bash
 printf 'CCO\nC1=CC=CC=C1\n' | cargo run --release -p cargo-npc -- \
-  --models /path/to/models/mini-shared
+  --model mini
 ```
 
 It also supports:
 
-- `--base-url` for a remote packed bundle
+- `--model mini` or `--model faithful`
 - `--output` to write results to a file instead of stdout
 - `--format json`, `--format jsonl`, or `--format parquet`
 - `--batch-size` to control streamed classification chunks
 - `--threads` to cap rayon parallelism
+- `--cache-dir` to control where downloaded bundles are cached
 - `--progress` to emit progress updates on stderr
 - explicit per-head threshold overrides
 
 Parquet output writes a compact columnar schema with:
+
 - `smiles`
 - `error`
 - `pathways`
@@ -64,7 +66,7 @@ Example:
 
 ```bash
 cargo npc \
-  --models /path/to/models/mini-shared \
+  --model mini \
   --input smiles.txt \
   --output results.parquet \
   --format parquet \
@@ -74,12 +76,12 @@ cargo npc \
 
 ## Library
 
-The core crate also exposes a reusable builder-backed runner for local or remote packed bundles.
+The core crate also exposes a reusable builder-backed runner for the hosted `Mini` and `Faithful` bundles.
 
 ```rust
 # #[cfg(feature = "runner")]
 # {
-use npclassifier_core::{PackedClassifierBuilder, PackedModelVariant};
+use npclassifier_core::{HostedModel, PackedClassifierBuilder, PackedModelVariant};
 
 let cache_dir = std::env::temp_dir().join(format!(
     "npclassifier-rs-doctest-{}",
@@ -87,9 +89,7 @@ let cache_dir = std::env::temp_dir().join(format!(
 ));
 
 let classifier = PackedClassifierBuilder::new()
-    .with_remote_base_url(
-        "https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/mini-shared",
-    )
+    .with_model(HostedModel::Mini)
     .with_cache_dir(&cache_dir)
     .with_variant(PackedModelVariant::Q4Kernel)
     .with_parallelism(4)

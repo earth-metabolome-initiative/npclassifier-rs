@@ -17,7 +17,7 @@ use arrow_array::{
 use arrow_schema::{DataType, Field, Schema};
 use clap::{Parser, ValueEnum};
 use npclassifier_core::{
-    ClassificationThresholds, ModelBundleSource, PackedClassifier, PackedClassifierBuilder,
+    ClassificationThresholds, HostedModel, PackedClassifier, PackedClassifierBuilder,
     PackedModelVariant, WebBatchEntry,
 };
 use parquet::arrow::ArrowWriter;
@@ -26,12 +26,9 @@ use parquet::arrow::ArrowWriter;
 #[command(name = "cargo-npc")]
 #[command(about = "Classify SMILES lines with a packed NPClassifier bundle.")]
 struct Cli {
-    /// Local packed model directory.
-    #[arg(long, conflicts_with = "base_url")]
-    models: Option<PathBuf>,
-    /// Remote base URL for a packed model bundle.
-    #[arg(long, conflicts_with = "models")]
-    base_url: Option<String>,
+    /// Hosted model bundle to download automatically.
+    #[arg(long, value_enum, default_value_t = CliModel::Mini)]
+    model: CliModel,
     /// Optional input file. Defaults to stdin.
     #[arg(long)]
     input: Option<PathBuf>,
@@ -74,12 +71,27 @@ enum CliVariant {
     Q4Kernel,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CliModel {
+    Mini,
+    Faithful,
+}
+
 impl From<CliVariant> for PackedModelVariant {
     fn from(value: CliVariant) -> Self {
         match value {
             CliVariant::F32 => Self::F32,
             CliVariant::Q8Kernel => Self::Q8Kernel,
             CliVariant::Q4Kernel => Self::Q4Kernel,
+        }
+    }
+}
+
+impl From<CliModel> for HostedModel {
+    fn from(value: CliModel) -> Self {
+        match value {
+            CliModel::Mini => Self::Mini,
+            CliModel::Faithful => Self::Faithful,
         }
     }
 }
@@ -102,11 +114,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn build_classifier(cli: &Cli) -> Result<PackedClassifier, Box<dyn std::error::Error>> {
-    let mut builder = PackedClassifierBuilder::new().with_variant(cli.variant.into());
-    builder = match select_source(cli)? {
-        ModelBundleSource::Local(path) => builder.with_local_dir(path),
-        ModelBundleSource::Remote(url) => builder.with_remote_base_url(url),
-    };
+    let mut builder = PackedClassifierBuilder::new()
+        .with_model(cli.model.into())
+        .with_variant(cli.variant.into());
     if let Some(thresholds) = threshold_override(cli) {
         builder = builder.with_thresholds(thresholds);
     }
@@ -125,15 +135,6 @@ fn normalize_subcommand_args(args: impl IntoIterator<Item = OsString>) -> Vec<Os
         args.remove(1);
     }
     args
-}
-
-fn select_source(cli: &Cli) -> Result<ModelBundleSource, Box<dyn std::error::Error>> {
-    match (&cli.models, &cli.base_url) {
-        (Some(path), None) => Ok(ModelBundleSource::Local(path.clone())),
-        (None, Some(url)) => Ok(ModelBundleSource::Remote(url.clone())),
-        (None, None) => Err("either --models or --base-url is required".into()),
-        (Some(_), Some(_)) => Err("use only one of --models or --base-url".into()),
-    }
 }
 
 fn open_input(path: Option<&Path>) -> Result<Box<dyn BufRead>, Box<dyn std::error::Error>> {

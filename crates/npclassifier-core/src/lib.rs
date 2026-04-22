@@ -22,7 +22,7 @@ pub mod ontology;
 pub mod packed;
 /// Reference dataset schemas and comparison helpers.
 pub mod reference;
-/// Parallel local and remote packed-model runner utilities.
+/// Parallel hosted packed-model runner utilities.
 #[cfg(feature = "runner")]
 pub mod runner;
 /// Ontology-aware reconciliation of pathway, superclass, and class hits.
@@ -60,7 +60,7 @@ pub use reference::{
     PubchemReferenceRow, compare_reference_prediction, compare_reference_rows,
 };
 #[cfg(feature = "runner")]
-pub use runner::{ModelBundleSource, PackedClassifier, PackedClassifierBuilder};
+pub use runner::{HostedModel, PackedClassifier, PackedClassifierBuilder};
 pub use voting::{IndexedLabel, VoteInput, VoteOutcome, vote_classification};
 pub use web::{
     WebBatchEntry, WebModelVariant, WebScoredLabel, WebWorkerRequest, WebWorkerResponse,

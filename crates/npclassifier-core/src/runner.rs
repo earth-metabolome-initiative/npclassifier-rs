@@ -1,4 +1,4 @@
-//! Local and remote packed-model runner utilities.
+//! Hosted packed-model runner utilities.
 
 use std::{
     collections::hash_map::DefaultHasher,
@@ -16,19 +16,41 @@ use crate::{
     classify_web_entry_with_thresholds,
 };
 
-/// Source for a packed model bundle.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ModelBundleSource {
-    /// Read the packed bundle from an already materialized local directory.
-    Local(PathBuf),
-    /// Download the packed bundle from a remote base URL and cache it locally.
-    Remote(String),
+/// Hosted packed model bundles available to the native runner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HostedModel {
+    /// Smaller shared-stem browser-native model.
+    Mini,
+    /// Larger faithful architecture model.
+    Faithful,
+}
+
+impl HostedModel {
+    /// Stable user-facing label for the hosted model.
+    #[must_use]
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Mini => "Mini",
+            Self::Faithful => "Faithful",
+        }
+    }
+
+    const fn base_url(self) -> &'static str {
+        match self {
+            Self::Mini => {
+                "https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/mini-shared"
+            }
+            Self::Faithful => {
+                "https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/full"
+            }
+        }
+    }
 }
 
 /// Builder for a reusable packed `NPClassifier` runner.
 #[derive(Debug, Clone)]
 pub struct PackedClassifierBuilder {
-    source: Option<ModelBundleSource>,
+    model: HostedModel,
     variant: PackedModelVariant,
     thresholds: Option<ClassificationThresholds>,
     cache_dir: Option<PathBuf>,
@@ -46,7 +68,7 @@ impl PackedClassifierBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            source: None,
+            model: HostedModel::Mini,
             variant: PackedModelVariant::Q4Kernel,
             thresholds: None,
             cache_dir: None,
@@ -54,17 +76,10 @@ impl PackedClassifierBuilder {
         }
     }
 
-    /// Load a packed bundle from a local directory.
+    /// Select which hosted model bundle to download automatically.
     #[must_use]
-    pub fn with_local_dir(mut self, path: impl Into<PathBuf>) -> Self {
-        self.source = Some(ModelBundleSource::Local(path.into()));
-        self
-    }
-
-    /// Download a packed bundle from a remote base URL.
-    #[must_use]
-    pub fn with_remote_base_url(mut self, url: impl Into<String>) -> Self {
-        self.source = Some(ModelBundleSource::Remote(url.into()));
+    pub fn with_model(mut self, model: HostedModel) -> Self {
+        self.model = model;
         self
     }
 
@@ -82,7 +97,7 @@ impl PackedClassifierBuilder {
         self
     }
 
-    /// Override the cache directory used for remote model downloads.
+    /// Override the cache directory used for downloaded model bundles.
     #[must_use]
     pub fn with_cache_dir(mut self, cache_dir: impl Into<PathBuf>) -> Self {
         self.cache_dir = Some(cache_dir.into());
@@ -103,52 +118,40 @@ impl PackedClassifierBuilder {
     /// Returns an error if the ontology, thresholds, or packed model bundle
     /// cannot be loaded.
     pub fn build(self) -> Result<PackedClassifier, NpClassifierError> {
-        let source = self.source.ok_or_else(|| {
-            NpClassifierError::Unsupported("model source is not configured".to_owned())
-        })?;
         let ontology = EmbeddedOntology::load()?;
-        let (model_dir, loaded_thresholds) = match source.clone() {
-            ModelBundleSource::Local(path) => {
-                let thresholds = load_thresholds_from_dir(&path)?;
-                (path, thresholds)
-            }
-            ModelBundleSource::Remote(base_url) => {
-                let cache_root = self.cache_dir.unwrap_or_else(default_cache_root);
-                let cached_dir = cache_remote_bundle(&base_url, &cache_root, self.variant)?;
-                let thresholds = load_thresholds_from_dir(&cached_dir)?;
-                (cached_dir, thresholds)
-            }
-        };
+        let cache_root = self.cache_dir.unwrap_or_else(default_cache_root);
+        let model_dir = cache_hosted_bundle(self.model, &cache_root, self.variant)?;
+        let loaded_thresholds = load_thresholds_from_dir(&model_dir)?;
 
         let model = PackedModelSet::from_dir(&model_dir, self.variant)?;
 
         Ok(PackedClassifier {
-            source,
+            model: self.model,
             variant: self.variant,
             ontology,
-            model,
+            packed_model: model,
             thresholds: self.thresholds.unwrap_or(loaded_thresholds),
             parallelism: self.parallelism,
         })
     }
 }
 
-/// Reusable packed classifier for local or cached remote bundles.
+/// Reusable packed classifier for cached hosted bundles.
 #[derive(Debug, Clone)]
 pub struct PackedClassifier {
-    source: ModelBundleSource,
+    model: HostedModel,
     variant: PackedModelVariant,
     ontology: Ontology,
-    model: PackedModelSet,
+    packed_model: PackedModelSet,
     thresholds: ClassificationThresholds,
     parallelism: Option<usize>,
 }
 
 impl PackedClassifier {
-    /// Return the configured source.
+    /// Return the configured hosted model.
     #[must_use]
-    pub fn source(&self) -> &ModelBundleSource {
-        &self.source
+    pub const fn model(&self) -> HostedModel {
+        self.model
     }
 
     /// Return the packed variant.
@@ -171,7 +174,7 @@ impl PackedClassifier {
             smiles,
             &self.ontology,
             &generator,
-            &self.model,
+            &self.packed_model,
             self.thresholds,
         )
     }
@@ -209,7 +212,7 @@ impl PackedClassifier {
 }
 
 fn load_thresholds_from_dir(
-    model_dir: &Path,
+    model_dir: &std::path::Path,
 ) -> Result<ClassificationThresholds, NpClassifierError> {
     let path = model_dir.join("thresholds.json");
     if !path.exists() {
@@ -218,11 +221,12 @@ fn load_thresholds_from_dir(
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
 }
 
-fn cache_remote_bundle(
-    base_url: &str,
+fn cache_hosted_bundle(
+    hosted_model: HostedModel,
     cache_root: &Path,
     variant: PackedModelVariant,
 ) -> Result<PathBuf, NpClassifierError> {
+    let base_url = hosted_model.base_url();
     let cache_dir = cache_root.join(cache_key(base_url, variant));
     fs::create_dir_all(&cache_dir)?;
 
@@ -326,7 +330,7 @@ fn default_cache_root() -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{PackedClassifierBuilder, cache_key, join_url};
+    use super::{HostedModel, PackedClassifierBuilder, cache_key, join_url};
     use crate::PackedModelVariant;
 
     #[test]
@@ -351,5 +355,11 @@ mod tests {
     fn builder_defaults_to_q4() {
         let builder = PackedClassifierBuilder::new();
         assert_eq!(builder.variant, PackedModelVariant::Q4Kernel);
+    }
+
+    #[test]
+    fn builder_defaults_to_mini_model() {
+        let builder = PackedClassifierBuilder::new();
+        assert_eq!(builder.model, HostedModel::Mini);
     }
 }
