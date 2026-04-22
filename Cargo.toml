@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/npclassifier-core",
+    "crates/cargo-npc",
     "crates/npclassifier-train",
     "apps/web",
     "apps/web-worker",

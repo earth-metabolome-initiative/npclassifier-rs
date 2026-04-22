@@ -13,20 +13,32 @@ The repository stays focused on a faithful `NPClassifier` line. The main practic
 
 ## CLI
 
-The user-facing CLI is `npclassifier-classify`. It reads one SMILES per line, classifies them in parallel, and prints JSON to stdout.
+The user-facing CLI is the `cargo npc` subcommand. It reads one SMILES per line, classifies them in parallel, and prints JSON to stdout.
 
-From a local packed model bundle:
+From this repository during development:
 
 ```bash
-cargo run --release -p npclassifier-core --features classify-cli --bin npclassifier-classify -- \
+cargo run --release -p cargo-npc -- \
   --models /path/to/models/mini-shared \
   --input smiles.txt
+```
+
+Once the package is published and installed:
+
+```bash
+cargo install cargo-npc
+```
+
+Then the same command becomes:
+
+```bash
+cargo npc --models /path/to/models/mini-shared --input smiles.txt
 ```
 
 From stdin:
 
 ```bash
-printf 'CCO\nC1=CC=CC=C1\n' | cargo run --release -p npclassifier-core --features classify-cli --bin npclassifier-classify -- \
+printf 'CCO\nC1=CC=CC=C1\n' | cargo run --release -p cargo-npc -- \
   --models /path/to/models/mini-shared
 ```
 

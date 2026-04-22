@@ -7,7 +7,6 @@ license.workspace = true
 [features]
 default = []
 burn-backend = ["dep:burn"]
-classify-cli = ["runner", "dep:clap"]
 demo-cli = ["dep:clap"]
 distillation-dataset = [
     "dep:arrow-array",
@@ -47,11 +46,6 @@ thiserror.workspace = true
 tokio = { workspace = true, optional = true }
 zenodo-rs = { workspace = true, optional = true }
 zstd = { workspace = true, optional = true }
-
-[[bin]]
-name = "npclassifier-classify"
-path = "src/bin/classify.rs"
-required-features = ["classify-cli"]
 
 [[bin]]
 name = "npclassifier-reference"

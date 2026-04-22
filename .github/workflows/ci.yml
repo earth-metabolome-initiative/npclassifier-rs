@@ -55,10 +55,16 @@ jobs:
         run: cargo check -p npclassifier-core --all-features
 
       - name: Test core
-        run: cargo test -p npclassifier-core --features classify-cli
+        run: cargo test -p npclassifier-core --all-features
 
       - name: Lint core
-        run: cargo clippy -p npclassifier-core --features classify-cli -- -D warnings
+        run: cargo clippy -p npclassifier-core --all-features -- -D warnings
+
+      - name: Test cargo-npc
+        run: cargo test -p cargo-npc
+
+      - name: Lint cargo-npc
+        run: cargo clippy -p cargo-npc -- -D warnings
 
   web:
     name: Web

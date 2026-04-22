@@ -47,6 +47,7 @@ pub struct LoadingState {
 }
 
 #[derive(Clone, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub enum BatchState {
     Empty,
     Loading(LoadingState),
@@ -567,6 +568,7 @@ fn parse_batch_smiles(input: &str) -> Vec<String> {
         .collect()
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn estimate_loading_eta_seconds(
     label: &str,
     completed: usize,
@@ -588,8 +590,10 @@ fn estimate_loading_eta_seconds(
     Some(eta_seconds.max(1.0) as u64)
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 const NATIVE_HINT_THRESHOLD_SECONDS: u64 = 60 * 60;
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn should_suggest_native_run(eta_seconds: Option<u64>) -> bool {
     eta_seconds.is_some_and(|seconds| seconds > NATIVE_HINT_THRESHOLD_SECONDS)
 }
