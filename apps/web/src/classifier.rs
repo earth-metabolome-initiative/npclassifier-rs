@@ -744,8 +744,7 @@ fn estimate_loading_eta_from_elapsed(
 fn request_now_timestamp() -> RequestStartedAt {
     web_sys::window()
         .and_then(|window| window.performance())
-        .map(|performance| performance.now())
-        .unwrap_or_else(Date::now)
+        .map_or_else(Date::now, |performance| performance.now())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
