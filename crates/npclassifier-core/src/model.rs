@@ -52,7 +52,7 @@ pub const BACKBONE_LAYERS: [DenseLayerSpec; 4] = [
 pub enum ModelHead {
     /// Seven-way pathway head.
     Pathway,
-    /// Seventy-seven-way superclass head.
+    /// Seventy-six-way superclass head.
     Superclass,
     /// Six-hundred-eighty-seven-way class head.
     Class,
@@ -64,7 +64,7 @@ impl ModelHead {
     pub const fn output_width(self) -> usize {
         match self {
             Self::Pathway => 7,
-            Self::Superclass => 77,
+            Self::Superclass => 76,
             Self::Class => 687,
         }
     }

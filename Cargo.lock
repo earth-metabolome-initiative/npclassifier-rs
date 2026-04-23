@@ -4385,23 +4385,17 @@ dependencies = [
 name = "npclassifier-core"
 version = "0.1.0"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "burn",
  "clap",
  "finge-rs",
- "half",
  "indicatif",
  "ndarray",
  "ndarray-npy",
- "parquet",
- "rand 0.9.4",
  "rayon",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
  "smiles-parser",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "zenodo-rs",
@@ -4413,6 +4407,7 @@ name = "npclassifier-train"
 version = "0.1.0"
 dependencies = [
  "arrow-array",
+ "arrow-schema",
  "burn",
  "clap",
  "finge-rs",
@@ -4426,6 +4421,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smiles-parser",
+ "tempfile",
  "thiserror 2.0.18",
  "tracing",
  "zstd",

@@ -2,7 +2,7 @@
 
 /// Classification pipeline traits, thresholding, and voting entrypoints.
 pub mod classifier;
-/// Distillation dataset curation for training and evaluating the Rust baseline.
+/// Finalized distillation dataset download helpers.
 #[cfg(feature = "distillation-dataset")]
 pub mod distillation;
 /// Top-level error type shared by the workspace crates.
@@ -36,10 +36,10 @@ pub use classifier::{
 };
 #[cfg(feature = "distillation-dataset")]
 pub use distillation::{
-    CompletedPart, ConfidenceMargins, CuratedManifest, CurationConfig, DEFAULT_COMPLETED_DIR,
-    DEFAULT_OUTPUT_DIR, DEFAULT_VOCABULARY_PATH, DistillationReport, SelectionSummary,
-    SignatureSummary, SplitFractions, SplitRowCounts, VectorWidths, curate_completed,
-    discover_parts, load_widths, summarize_completed,
+    DEFAULT_DISTILLATION_DATA_DIR, DISTILLATION_DATASET_DOI, DISTILLATION_DATASET_FILES,
+    DISTILLATION_DATASET_RECORD_ID, DistillationDatasetDownload, DistillationDatasetDownloadConfig,
+    DistillationDatasetFile, download_distillation_dataset, ensure_distillation_dataset,
+    missing_distillation_dataset_files,
 };
 pub use error::NpClassifierError;
 #[cfg(feature = "fingerprints")]

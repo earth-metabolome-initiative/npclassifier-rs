@@ -51,6 +51,7 @@ pub fn build_copy_json(entries: &[BatchEntry]) -> Result<String, serde_json::Err
     serde_json::to_string(&copied)
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(clippy::unused_async))]
 pub async fn copy_text_to_clipboard(text: String) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -102,6 +103,7 @@ pub fn download_filename(entries: &[BatchEntry]) -> String {
     )
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), allow(clippy::unnecessary_wraps))]
 pub fn download_json_file(filename: &str, text: &str) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     {
@@ -188,6 +190,8 @@ fn js_error_text(error: &JsValue) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use npclassifier_core::{
         PredictionLabels, WebBatchEntry as BatchEntry, WebScoredLabel as ScoredLabel,
     };
@@ -264,9 +268,9 @@ mod tests {
         assert_eq!(single_name, download_filename(&single));
         assert_eq!(batch_name, download_filename(&batch));
         assert!(single_name.starts_with("npclassifier-entry-"));
-        assert!(single_name.ends_with(".json"));
+        assert!(has_json_extension(&single_name));
         assert!(batch_name.starts_with("npclassifier-batch-2-"));
-        assert!(batch_name.ends_with(".json"));
+        assert!(has_json_extension(&batch_name));
         assert_ne!(single_name, batch_name);
 
         let single_hash = single_name
@@ -279,5 +283,11 @@ mod tests {
         assert_eq!(batch_hash.len(), 6);
         assert!(single_hash.chars().all(|ch| ch.is_ascii_hexdigit()));
         assert!(batch_hash.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    fn has_json_extension(filename: &str) -> bool {
+        Path::new(filename)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
     }
 }

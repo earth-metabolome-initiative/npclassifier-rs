@@ -247,7 +247,7 @@ mod tests {
             .map(|index| format!(r#""Path {index}": {index}"#))
             .collect::<Vec<_>>()
             .join(", ");
-        let superclasses = (0..77)
+        let superclasses = (0..76)
             .map(|index| format!(r#""Super {index}": {index}"#))
             .collect::<Vec<_>>()
             .join(", ");
@@ -276,7 +276,7 @@ mod tests {
     fn score_thresholds_feed_the_voter() {
         let ontology = fixture_ontology();
         let mut pathway = vec![0.0; 7];
-        let mut superclass = vec![0.0; 77];
+        let mut superclass = vec![0.0; 76];
         let mut class = vec![0.0; 687];
         pathway[0] = 0.7;
         superclass[0] = 0.8;

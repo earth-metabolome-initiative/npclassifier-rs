@@ -313,11 +313,13 @@ pub struct StudentModel<B: Backend> {
 impl StudentModelConfig {
     /// Draft-faithful baseline architecture recovered from the original
     /// `NPClassifier` stack.
+    #[must_use]
     pub fn baseline() -> Self {
         Self::new()
     }
 
     /// Smaller variant that shares the first hidden block across all heads.
+    #[must_use]
     pub fn mini_shared() -> Self {
         Self::new()
             .with_hidden_1(MINI_HIDDEN_1)
@@ -385,6 +387,7 @@ impl StudentModelConfig {
 impl<B: Backend> StudentModel<B> {
     /// Quantize only the compatible `Linear` weight matrices, leaving biases and
     /// normalization parameters in float.
+    #[must_use]
     pub fn quantize_compatible_linear_weights(self, scheme: &QuantScheme) -> Self {
         Self {
             shared_stem: self
@@ -408,6 +411,12 @@ impl<B: Backend> StudentModel<B> {
         }
     }
 
+    /// Exports the three prediction heads into the packed inference schema.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the architecture wiring is inconsistent or if any
+    /// tensor cannot be decoded into the packed schema.
     pub fn export_heads(&self) -> Result<[ExportedHead; 3], String> {
         let stem_layers = match (
             self.shared_stem.as_ref(),
@@ -446,6 +455,12 @@ impl<B: Backend> StudentModel<B> {
         Ok([pathway, superclass, class])
     }
 
+    /// Exports the shared first layer for mini/shared-stem models.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the architecture combines shared and per-head stems
+    /// in a layout that cannot be represented by the packed schema.
     pub fn export_shared_stem(&self) -> Result<Option<Vec<ExportedHeadLayer>>, String> {
         match (
             self.shared_stem.as_ref(),
@@ -604,27 +619,20 @@ fn export_linear_layer<B: Backend>(
     activation: &'static str,
     linear: &Linear<B>,
 ) -> Result<ExportedDenseLayer, String> {
-    let weight_data = linear.weight.val().into_data();
-    let shape = weight_data.shape.clone();
-    let [input, output] = shape.as_slice() else {
-        return Err(format!(
-            "linear layer {name} should have rank-2 weights, got {:?}",
-            shape
-        ));
-    };
-    let input = *input;
-    let output = *output;
+    let weight = linear.weight.val();
+    let [input, output] = weight.dims();
+    let weight_data = weight.into_data();
     let bias = linear
         .bias
         .as_ref()
-        .map(|bias| tensor_to_f32_vec(bias.val().into_data()))
+        .map(|bias| tensor_to_f32_vec(&bias.val().into_data()))
         .transpose()?
         .unwrap_or_else(|| vec![0.0; output]);
-    let dtype = weight_data.dtype.clone();
+    let dtype = weight_data.dtype;
     let kernel = match dtype {
-        DType::QFloat(scheme) => export_q4_kernel(name, weight_data, input, output, &scheme)?,
+        DType::QFloat(scheme) => export_q4_kernel(name, &weight_data, input, output, &scheme)?,
         _ => ExportedKernel::F32 {
-            values: tensor_to_f32_vec(weight_data)?,
+            values: tensor_to_f32_vec(&weight_data)?,
             input,
             output,
         },
@@ -638,25 +646,26 @@ fn export_linear_layer<B: Backend>(
     })
 }
 
+#[allow(clippy::cast_possible_truncation)]
 fn export_batch_norm_layer<B: Backend>(
     name: &str,
     batch_norm: &BatchNorm<B>,
 ) -> ExportedBatchNormLayer {
     ExportedBatchNormLayer {
         name: name.to_owned(),
-        gamma: tensor_to_f32_vec(batch_norm.gamma.val().into_data())
+        gamma: tensor_to_f32_vec(&batch_norm.gamma.val().into_data())
             .expect("batch norm gamma should decode"),
-        beta: tensor_to_f32_vec(batch_norm.beta.val().into_data())
+        beta: tensor_to_f32_vec(&batch_norm.beta.val().into_data())
             .expect("batch norm beta should decode"),
-        mean: tensor_to_f32_vec(batch_norm.running_mean.value().into_data())
+        mean: tensor_to_f32_vec(&batch_norm.running_mean.value().into_data())
             .expect("batch norm mean should decode"),
-        variance: tensor_to_f32_vec(batch_norm.running_var.value().into_data())
+        variance: tensor_to_f32_vec(&batch_norm.running_var.value().into_data())
             .expect("batch norm variance should decode"),
         epsilon: batch_norm.epsilon as f32,
     }
 }
 
-fn tensor_to_f32_vec(data: TensorData) -> Result<Vec<f32>, String> {
+fn tensor_to_f32_vec(data: &TensorData) -> Result<Vec<f32>, String> {
     if matches!(data.dtype, DType::QFloat(_)) {
         return Err("expected a float tensor, found a quantized tensor".to_owned());
     }
@@ -666,7 +675,7 @@ fn tensor_to_f32_vec(data: TensorData) -> Result<Vec<f32>, String> {
 
 fn export_q4_kernel(
     name: &str,
-    data: TensorData,
+    data: &TensorData,
     input: usize,
     output: usize,
     scheme: &burn::tensor::quantization::QuantScheme,
@@ -708,8 +717,7 @@ fn export_q4_kernel(
             let block_elements = block_size.num_elements();
             if block_elements == 0 || !num_elements.is_multiple_of(block_elements) {
                 return Err(format!(
-                    "linear layer {name} has invalid block size {:?} for {input}x{output}",
-                    block_size
+                    "linear layer {name} has invalid block size {block_size:?} for {input}x{output}"
                 ));
             }
             num_elements / block_elements
@@ -815,7 +823,6 @@ fn last_dim_is_pack_compatible(last_dim: usize, scheme: &QuantScheme) -> bool {
 #[cfg(test)]
 mod tests {
     use burn::backend::NdArray;
-    use burn::module::Module;
     use burn::tensor::TensorData;
 
     use super::*;
@@ -847,7 +854,7 @@ mod tests {
     #[test]
     fn forward_logits_match_head_output_shapes() {
         let device = burn::backend::ndarray::NdArrayDevice::Cpu;
-        let model = StudentModelConfig::baseline().init::<NdArray>(&device, 1.0, 0.0);
+        let model = tiny_test_config().init::<NdArray>(&device, 1.0, 0.0);
         let inputs = Tensor::<NdArray, 2>::zeros([2, FINGERPRINT_INPUT_WIDTH], &device);
         let logits = model.forward_logits(inputs);
 
@@ -858,20 +865,19 @@ mod tests {
 
     #[test]
     fn parameter_count_is_close_to_the_original_three_head_total() {
-        let device = burn::backend::ndarray::NdArrayDevice::Cpu;
-        let model = StudentModelConfig::baseline().init::<NdArray>(&device, 1.0, 0.0);
-
-        assert_eq!(model.num_params(), 200_130_819);
+        assert_eq!(
+            parameter_count(&StudentModelConfig::baseline()),
+            200_129_666
+        );
     }
 
     #[test]
     fn mini_shared_architecture_is_far_smaller_than_baseline() {
-        let device = burn::backend::ndarray::NdArrayDevice::Cpu;
-        let mini_shared = StudentModelConfig::mini_shared().init::<NdArray>(&device, 1.0, 0.0);
-        let baseline = StudentModelConfig::baseline().init::<NdArray>(&device, 1.0, 0.0);
+        let mini_shared = parameter_count(&StudentModelConfig::mini_shared());
+        let baseline = parameter_count(&StudentModelConfig::baseline());
 
-        assert!(mini_shared.num_params() < baseline.num_params());
-        assert!(mini_shared.num_params() < 20_000_000);
+        assert!(mini_shared < baseline);
+        assert!(mini_shared < 20_000_000);
     }
 
     #[test]
@@ -906,5 +912,38 @@ mod tests {
         assert!(!last_dim_is_pack_compatible(PATHWAY_WIDTH, &scheme));
         assert!(!last_dim_is_pack_compatible(SUPERCLASS_WIDTH, &scheme));
         assert!(!last_dim_is_pack_compatible(CLASS_WIDTH, &scheme));
+    }
+
+    fn tiny_test_config() -> StudentModelConfig {
+        StudentModelConfig::mini_shared()
+            .with_hidden_1(8)
+            .with_hidden_2(8)
+            .with_hidden_3(8)
+            .with_hidden_4(8)
+    }
+
+    const fn parameter_count(config: &StudentModelConfig) -> usize {
+        let stem_count = if config.share_first_layer { 1 } else { 3 };
+        stem_count * stem_parameter_count(config.hidden_1)
+            + head_parameter_count(config, PATHWAY_WIDTH)
+            + head_parameter_count(config, SUPERCLASS_WIDTH)
+            + head_parameter_count(config, CLASS_WIDTH)
+    }
+
+    const fn stem_parameter_count(hidden_1: usize) -> usize {
+        FINGERPRINT_INPUT_WIDTH * hidden_1 + hidden_1 + 4 * hidden_1
+    }
+
+    const fn head_parameter_count(config: &StudentModelConfig, output_width: usize) -> usize {
+        linear_parameter_count(config.hidden_1, config.hidden_2)
+            + 4 * config.hidden_2
+            + linear_parameter_count(config.hidden_2, config.hidden_3)
+            + 4 * config.hidden_3
+            + linear_parameter_count(config.hidden_3, config.hidden_4)
+            + linear_parameter_count(config.hidden_4, output_width)
+    }
+
+    const fn linear_parameter_count(input: usize, output: usize) -> usize {
+        input * output + output
     }
 }

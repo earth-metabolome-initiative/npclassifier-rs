@@ -1,4 +1,4 @@
-//! Curated distillation split loading and Burn batch preparation.
+//! Published distillation split loading and Burn batch preparation.
 
 use std::fmt::Debug;
 use std::fs::File;
@@ -22,7 +22,10 @@ use rayon::prelude::*;
 use serde::Deserialize;
 use smiles_parser::smiles::Smiles;
 
-use npclassifier_core::{FINGERPRINT_FORMULA_BITS, FINGERPRINT_INPUT_WIDTH, ModelHead};
+use npclassifier_core::{
+    DISTILLATION_DATASET_DOI, FINGERPRINT_FORMULA_BITS, FINGERPRINT_INPUT_WIDTH, ModelHead,
+    ensure_distillation_dataset, missing_distillation_dataset_files,
+};
 
 use crate::error::TrainingError;
 
@@ -32,7 +35,7 @@ const CLASS_WIDTH: usize = ModelHead::Class.output_width();
 const PROGRESS_TICK_INTERVAL: Duration = Duration::from_millis(100);
 const FINGERPRINT_PROGRESS_CHUNK_ROWS: usize = 256;
 
-/// Fully loaded metadata and optional teacher vectors for one curated split.
+/// Fully loaded metadata and optional teacher vectors for one dataset split.
 #[derive(Debug)]
 pub struct TeacherSplitStorage {
     smiles: Vec<String>,
@@ -51,6 +54,12 @@ impl TeacherSplitStorage {
     #[must_use]
     pub fn len(&self) -> usize {
         self.smiles.len()
+    }
+
+    /// Returns whether the split has no rows.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.smiles.is_empty()
     }
 }
 
@@ -102,6 +111,12 @@ impl NpClassifierBatch {
     #[must_use]
     pub fn len(&self) -> usize {
         self.inputs.len() / FINGERPRINT_INPUT_WIDTH
+    }
+
+    /// Returns whether the batch has no rows.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.inputs.is_empty()
     }
 }
 
@@ -324,8 +339,14 @@ where
     }
 }
 
-/// Loads the curated manifest from a split directory.
+/// Loads the finalized split manifest from a dataset directory.
+///
+/// # Errors
+///
+/// Returns an error if the dataset cannot be downloaded, the manifest is
+/// missing, or the manifest cannot be read or decoded.
 pub fn load_manifest(data_dir: &Path) -> Result<TrainingManifest, TrainingError> {
+    ensure_training_dataset(data_dir)?;
     let manifest_path = data_dir.join("manifest.json");
     if !manifest_path.exists() {
         return Err(TrainingError::MissingFile(manifest_path));
@@ -334,13 +355,20 @@ pub fn load_manifest(data_dir: &Path) -> Result<TrainingManifest, TrainingError>
     Ok(serde_json::from_str(&contents)?)
 }
 
-/// Loads one curated split into memory.
+/// Loads one finalized split into memory.
+///
+/// # Errors
+///
+/// Returns an error if the dataset cannot be downloaded, the split files are
+/// missing, or the Parquet rows, teacher vectors, or fingerprints cannot be
+/// loaded.
 pub fn load_split_storage(
     data_dir: &Path,
     split: &str,
     limit: Option<usize>,
     include_teacher: bool,
 ) -> Result<Arc<TeacherSplitStorage>, TrainingError> {
+    ensure_training_dataset(data_dir)?;
     let rows_path = data_dir.join(format!("{split}.parquet"));
     ensure_exists(&rows_path)?;
 
@@ -445,6 +473,7 @@ pub fn load_split_storage(
 }
 
 /// Builds a Burn dataloader for a previously loaded split.
+#[must_use]
 pub fn build_dataloader<B: Backend>(
     storage: &Arc<TeacherSplitStorage>,
     batch_size: usize,
@@ -470,6 +499,19 @@ fn ensure_exists(path: &Path) -> Result<(), TrainingError> {
     } else {
         Err(TrainingError::MissingFile(path.to_path_buf()))
     }
+}
+
+fn ensure_training_dataset(data_dir: &Path) -> Result<(), TrainingError> {
+    let missing = missing_distillation_dataset_files(data_dir);
+    if !missing.is_empty() {
+        eprintln!(
+            "distillation dataset is missing {} files; downloading from {DISTILLATION_DATASET_DOI} into {}",
+            missing.len(),
+            data_dir.display()
+        );
+        ensure_distillation_dataset(data_dir)?;
+    }
+    Ok(())
 }
 
 fn precompute_fingerprints(
@@ -649,7 +691,7 @@ pub struct TrainingManifest {
     pub vector_widths: TrainingVectorWidths,
 }
 
-/// Width metadata copied from the curation manifest.
+/// Width metadata copied from the published dataset manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TrainingVectorWidths {
     /// Pathway width.

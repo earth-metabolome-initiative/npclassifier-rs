@@ -23,5 +23,9 @@ thiserror.workspace = true
 tracing = "0.1.41"
 zstd.workspace = true
 
+[dev-dependencies]
+arrow-schema.workspace = true
+tempfile.workspace = true
+
 [lints]
 workspace = true

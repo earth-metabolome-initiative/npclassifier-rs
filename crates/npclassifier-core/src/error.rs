@@ -37,8 +37,8 @@ pub enum NpClassifierError {
     /// Fingerprint generation failed.
     #[error("fingerprint generation failed: {0}")]
     Fingerprint(String),
-    /// Dataset curation or split materialization failed.
-    #[error("dataset curation failed: {0}")]
+    /// Dataset access or validation failed.
+    #[error("dataset access failed: {0}")]
     Dataset(String),
     /// Model loading or inference failed.
     #[error("model inference failed: {0}")]
@@ -46,10 +46,7 @@ pub enum NpClassifierError {
     /// Remote model access failed.
     #[error("remote model access failed: {0}")]
     Remote(String),
-    /// A requested pipeline step is not implemented.
-    #[error("unsupported pipeline step: {0}")]
-    Unsupported(String),
-    #[cfg(feature = "reference-dataset")]
+    #[cfg(any(feature = "reference-dataset", feature = "distillation-dataset"))]
     /// Zenodo dataset access failed.
     #[error(transparent)]
     Zenodo(#[from] zenodo_rs::ZenodoError),

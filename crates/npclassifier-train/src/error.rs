@@ -21,11 +21,11 @@ pub enum TrainingError {
     /// Core classifier utilities failed.
     #[error(transparent)]
     Core(#[from] NpClassifierError),
-    /// Required curated split files were missing.
-    #[error("missing curated split file: {0}")]
+    /// Required dataset split files were missing.
+    #[error("missing dataset split file: {0}")]
     MissingFile(PathBuf),
-    /// The curated dataset contents did not match the expected schema.
-    #[error("invalid curated dataset: {0}")]
+    /// The dataset contents did not match the expected schema.
+    #[error("invalid dataset: {0}")]
     Dataset(String),
     /// Burn training or recording failed.
     #[error("burn training failed: {0}")]

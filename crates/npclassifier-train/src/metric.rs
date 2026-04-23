@@ -278,13 +278,13 @@ pub fn class_mcc_metric<B: Backend>() -> MatthewsCorrelationMetric<B, ClassConfu
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ConfusionCounts {
     /// True positives.
-    pub tp: u32,
+    pub tp: u64,
     /// True negatives.
-    pub tn: u32,
+    pub tn: u64,
     /// False positives.
-    pub fp: u32,
+    pub fp: u64,
     /// False negatives.
-    pub fn_: u32,
+    pub fn_: u64,
 }
 
 fn merge_counts(left: ConfusionCounts, right: ConfusionCounts) -> ConfusionCounts {
@@ -314,11 +314,12 @@ pub fn accumulate_counts(predictions: &[f32], targets: &[bool], threshold: f32) 
 
 /// Computes Matthews correlation coefficient from already aggregated confusion counts.
 #[must_use]
+#[allow(clippy::cast_precision_loss)]
 pub fn matthews_correlation(counts: ConfusionCounts) -> f64 {
-    let tp = f64::from(counts.tp);
-    let tn = f64::from(counts.tn);
-    let fp = f64::from(counts.fp);
-    let fn_ = f64::from(counts.fn_);
+    let tp = counts.tp as f64;
+    let tn = counts.tn as f64;
+    let fp = counts.fp as f64;
+    let fn_ = counts.fn_ as f64;
     let numerator = tp * tn - fp * fn_;
     let denominator = ((tp + fp) * (tp + fn_) * (tn + fp) * (tn + fn_)).sqrt();
     if denominator <= f64::EPSILON {
@@ -328,22 +329,32 @@ pub fn matthews_correlation(counts: ConfusionCounts) -> f64 {
     }
 }
 
+/// Computes confusion counts from Burn tensors after synchronizing them.
+///
+/// # Errors
+///
+/// Returns an error if tensor synchronization or host-side tensor decoding
+/// fails.
 pub fn counts_from_tensors<B: Backend>(
     predictions: Tensor<B, 2>,
     targets: Tensor<B, 2, Int>,
     threshold: f32,
 ) -> Result<ConfusionCounts, TrainingError> {
-    let [predictions, targets] = Transaction::default()
+    let mut tensors = Transaction::default()
         .register(predictions)
         .register(targets)
-        .execute()
-        .try_into()
-        .expect("correct number of synchronized tensors");
+        .execute();
+    let targets = tensors
+        .pop()
+        .ok_or_else(|| TrainingError::Burn("missing synchronized target tensor".to_owned()))?;
+    let predictions = tensors
+        .pop()
+        .ok_or_else(|| TrainingError::Burn("missing synchronized prediction tensor".to_owned()))?;
     let predictions = predictions
         .to_vec::<f32>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?;
     let targets = targets
-        .to_vec::<i32>()
+        .to_vec::<i64>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?;
     let targets = targets
         .into_iter()
@@ -395,6 +406,18 @@ mod tests {
             fn_: 0,
         };
         assert!(matthews_correlation(counts).abs() < 1e-12);
+    }
+
+    #[test]
+    fn matthews_correlation_handles_counts_above_u32() {
+        let counts = ConfusionCounts {
+            tp: 4_500_000_000,
+            tn: 4_500_000_000,
+            fp: 0,
+            fn_: 0,
+        };
+
+        assert!((matthews_correlation(counts) - 1.0).abs() < 1e-9);
     }
 
     #[test]

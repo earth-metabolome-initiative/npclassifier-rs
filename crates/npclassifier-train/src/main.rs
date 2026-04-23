@@ -25,24 +25,26 @@ use clap::{Parser, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 
-use npclassifier_core::ModelHead;
+use npclassifier_core::{DEFAULT_DISTILLATION_DATA_DIR, ModelHead};
+use npclassifier_train::calibration::{
+    DEFAULT_THRESHOLD_BINS, calibrate_validation_thresholds, write_threshold_report,
+};
 use npclassifier_train::data::{
     NpClassifierBatch, TeacherSplitStorage, TrainingManifest, build_dataloader, load_manifest,
     load_split_storage,
 };
 use npclassifier_train::error::TrainingError;
-use npclassifier_train::metric::{
-    ConfusionCounts, class_mcc_metric, counts_from_tensors, matthews_correlation,
-    pathway_mcc_metric, superclass_mcc_metric,
-};
+use npclassifier_train::evaluation::{SplitEvaluationReport, evaluate_split};
+use npclassifier_train::metric::{class_mcc_metric, pathway_mcc_metric, superclass_mcc_metric};
 use npclassifier_train::model::{StudentModel, StudentModelConfig};
+use npclassifier_train::quantization::{
+    print_quantization_table, quantize_and_evaluate, write_quantization_report,
+};
 use npclassifier_train::sync_best::{SyncBestModelMetadata, SyncBestModelStrategy};
 use npclassifier_train::{
     CLASS_MCC_LOG_NAME, SYNC_BEST_METADATA_FILE_NAME, SYNC_BEST_MODEL_FILE_STEM,
 };
 
-/// Default curated split directory expected by the training CLI.
-const DEFAULT_DATA_DIR: &str = "data/distillation/teacher-splits";
 /// Default artifact directory for student training runs.
 const DEFAULT_ARTIFACT_DIR: &str = "artifacts/baseline";
 const CHECKPOINT_DIR_NAME: &str = "checkpoint";
@@ -81,7 +83,7 @@ enum ArchitecturePreset {
 #[command(name = "npclassifier-train")]
 #[command(about = "Train an NPClassifier-compatible baseline with Burn")]
 struct Cli {
-    #[arg(long, default_value = DEFAULT_DATA_DIR)]
+    #[arg(long, default_value = DEFAULT_DISTILLATION_DATA_DIR)]
     data_dir: PathBuf,
     #[arg(long, default_value = DEFAULT_ARTIFACT_DIR)]
     artifact_dir: PathBuf,
@@ -161,6 +163,17 @@ The optional --hidden-1/2/3/4 flags override the selected preset."
     valid_rows: Option<usize>,
     #[arg(long)]
     test_rows: Option<usize>,
+    #[arg(
+        long,
+        default_value_t = DEFAULT_THRESHOLD_BINS,
+        long_help = "Number of validation-score histogram buckets used by automatic post-training threshold calibration."
+    )]
+    threshold_bins: u32,
+    #[arg(
+        long,
+        long_help = "Directory for automatic packed q4 browser artifacts. Defaults to <artifact-dir>/web."
+    )]
+    web_output_dir: Option<PathBuf>,
 }
 
 #[derive(Config, Debug)]
@@ -181,14 +194,6 @@ struct TrainingConfig {
     hard_label_weight: f32,
     #[config(default = 0.0)]
     teacher_weight: f32,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-struct SplitEvaluationReport {
-    rows: usize,
-    pathway_mcc: f64,
-    superclass_mcc: f64,
-    class_mcc: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -257,28 +262,8 @@ where
     B: AutodiffBackend,
     B::Device: Clone,
 {
-    if !std::io::stdout().is_terminal() {
-        return Err(TrainingError::Burn(
-            "the Burn TUI renderer requires a real terminal; run the trainer in an interactive TTY"
-                .to_owned(),
-        ));
-    }
-    if cli.checkpoint.is_some() && cli.checkpointing != CheckpointingMode::Async {
-        return Err(TrainingError::Dataset(
-            "--checkpoint requires --checkpointing async because sync-best only saves the best inference model".to_owned(),
-        ));
-    }
-
-    let manifest = load_manifest(&cli.data_dir)?;
-    validate_manifest(&manifest)?;
-    fs::create_dir_all(&cli.artifact_dir)?;
-    fs::copy(
-        cli.data_dir.join("manifest.json"),
-        cli.artifact_dir.join("dataset-manifest.json"),
-    )?;
-    if cli.checkpointing == CheckpointingMode::SyncBest {
-        clear_sync_best_artifacts(&cli.artifact_dir)?;
-    }
+    validate_training_invocation(cli)?;
+    prepare_training_artifacts(cli)?;
     let config = build_training_config(cli);
     config.save(cli.artifact_dir.join("training-config.json"))?;
     B::seed(&device, config.seed);
@@ -286,7 +271,7 @@ where
     let (train_storage, valid_storage, test_storage) =
         load_training_storages(cli, include_teacher)?;
     println!(
-        "loaded curated rows: train={} validation={} test={}",
+        "loaded dataset rows: train={} validation={} test={}",
         train_storage.len(),
         valid_storage.len(),
         test_storage.len()
@@ -310,11 +295,13 @@ where
             .metric_valid_numeric(class_mcc_metric())
             .metric_train_numeric(LearningRateMetric::new())
             .num_epochs(config.num_epochs)
-            .summary()
-            .renderer(TuiMetricsRenderer::new(
-                Interrupter::default(),
-                cli.checkpoint,
-            ));
+            .summary();
+    if std::io::stdout().is_terminal() {
+        training = training.renderer(TuiMetricsRenderer::new(
+            Interrupter::default(),
+            cli.checkpoint,
+        ));
+    }
     if cli.checkpointing == CheckpointingMode::Async {
         training = training
             .with_file_checkpointer(CompactRecorder::new())
@@ -358,12 +345,79 @@ where
         test: evaluate_split(&model_to_export, &test_loader)?,
     };
 
-    model_to_export
+    save_and_finalize_model(
+        cli,
+        &model_to_export,
+        report,
+        &valid_storage,
+        &valid_loader,
+        &test_loader,
+    )
+}
+
+fn save_and_finalize_model<B: Backend>(
+    cli: &Cli,
+    model: &StudentModel<B>,
+    report: RunEvaluationReport,
+    valid_storage: &TeacherSplitStorage,
+    valid_loader: &Arc<dyn burn::data::dataloader::DataLoader<B, NpClassifierBatch>>,
+    test_loader: &Arc<dyn burn::data::dataloader::DataLoader<B, NpClassifierBatch>>,
+) -> Result<(), TrainingError> {
+    model
+        .clone()
         .save_file(cli.artifact_dir.join("model"), &CompactRecorder::new())
         .map_err(|error| TrainingError::Burn(error.to_string()))?;
     write_run_reports(&cli.artifact_dir, &report)?;
     print_split_metrics_table(&report);
     println!("{}", serde_json::to_string_pretty(&report)?);
+
+    let threshold_report =
+        calibrate_validation_thresholds(model, valid_storage, valid_loader, cli.threshold_bins)?;
+    write_threshold_report(&cli.artifact_dir, &threshold_report)?;
+    println!("{}", serde_json::to_string_pretty(&threshold_report)?);
+
+    let web_output_dir = cli
+        .web_output_dir
+        .clone()
+        .unwrap_or_else(|| cli.artifact_dir.join("web"));
+    let quantization_report = quantize_and_evaluate(
+        model,
+        &cli.artifact_dir,
+        test_loader,
+        report.test,
+        &web_output_dir,
+        threshold_report.thresholds,
+    )?;
+    write_quantization_report(&cli.artifact_dir, &quantization_report)?;
+    print_quantization_table(&quantization_report);
+    println!("{}", serde_json::to_string_pretty(&quantization_report)?);
+
+    println!("exported packed web model to {}", web_output_dir.display());
+
+    Ok(())
+}
+
+fn validate_training_invocation(cli: &Cli) -> Result<(), TrainingError> {
+    if cli.checkpoint.is_some() && cli.checkpointing != CheckpointingMode::Async {
+        return Err(TrainingError::Dataset(
+            "--checkpoint requires --checkpointing async because sync-best only saves the best inference model".to_owned(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn prepare_training_artifacts(cli: &Cli) -> Result<(), TrainingError> {
+    let manifest = load_manifest(&cli.data_dir)?;
+    validate_manifest(&manifest)?;
+    fs::create_dir_all(&cli.artifact_dir)?;
+    fs::copy(
+        cli.data_dir.join("manifest.json"),
+        cli.artifact_dir.join("dataset-manifest.json"),
+    )?;
+    if cli.checkpointing == CheckpointingMode::SyncBest {
+        clear_sync_best_artifacts(&cli.artifact_dir)?;
+    }
 
     Ok(())
 }
@@ -474,7 +528,7 @@ fn validate_manifest(manifest: &TrainingManifest) -> Result<(), TrainingError> {
         || manifest.vector_widths.class_ != ModelHead::Class.output_width()
     {
         return Err(TrainingError::Dataset(
-            "curated manifest vector widths do not match the expected NPClassifier heads"
+            "dataset manifest vector widths do not match the expected NPClassifier heads"
                 .to_owned(),
         ));
     }
@@ -746,52 +800,6 @@ fn usize_to_f64(value: usize) -> Result<f64, TrainingError> {
     Ok(f64::from(value))
 }
 
-fn evaluate_split<B: Backend>(
-    model: &StudentModel<B>,
-    loader: &Arc<dyn burn::data::dataloader::DataLoader<B, NpClassifierBatch>>,
-) -> Result<SplitEvaluationReport, TrainingError> {
-    let mut pathway = ConfusionCounts::default();
-    let mut superclass = ConfusionCounts::default();
-    let mut class = ConfusionCounts::default();
-    let mut rows = 0;
-
-    for batch in loader.iter() {
-        rows += batch.len();
-        let output = model.step(batch);
-        pathway = merge_counts(
-            pathway,
-            counts_from_tensors(
-                output.pathway_probabilities,
-                output.pathway_targets,
-                ModelHead::Pathway.threshold(),
-            )?,
-        );
-        superclass = merge_counts(
-            superclass,
-            counts_from_tensors(
-                output.superclass_probabilities,
-                output.superclass_targets,
-                ModelHead::Superclass.threshold(),
-            )?,
-        );
-        class = merge_counts(
-            class,
-            counts_from_tensors(
-                output.class_probabilities,
-                output.class_targets,
-                ModelHead::Class.threshold(),
-            )?,
-        );
-    }
-
-    Ok(SplitEvaluationReport {
-        rows,
-        pathway_mcc: matthews_correlation(pathway),
-        superclass_mcc: matthews_correlation(superclass),
-        class_mcc: matthews_correlation(class),
-    })
-}
-
 fn print_split_metrics_table(report: &RunEvaluationReport) {
     println!();
     println!("Final Metrics");
@@ -816,11 +824,173 @@ fn print_split_metric_row(label: &str, report: &SplitEvaluationReport) {
     );
 }
 
-fn merge_counts(left: ConfusionCounts, right: ConfusionCounts) -> ConfusionCounts {
-    ConfusionCounts {
-        tp: left.tp + right.tp,
-        tn: left.tn + right.tn,
-        fp: left.fp + right.fp,
-        fn_: left.fn_ + right.fn_,
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+    use std::fs::{self, File};
+
+    use arrow_array::builder::{ListBuilder, UInt16Builder};
+    use arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, StringArray};
+    use arrow_schema::{Field, Schema};
+    use npclassifier_core::DISTILLATION_DATASET_FILES;
+    use parquet::arrow::ArrowWriter;
+    use serde_json::json;
+    use tempfile::TempDir;
+
+    use super::*;
+
+    const SYNTHETIC_SMILES: [&str; 4] = ["C", "CC", "CO", "CN"];
+    const SYNTHETIC_CIDS: [i64; 4] = [1, 2, 3, 4];
+    const SYNTHETIC_LABELS: [u16; 4] = [0, 1, 0, 1];
+
+    #[test]
+    fn full_ndarray_train_run_calibrates_quantizes_and_exports_web_artifacts()
+    -> Result<(), Box<dyn Error>> {
+        let temp_dir = TempDir::new()?;
+        let data_dir = temp_dir.path().join("data");
+        let artifact_dir = temp_dir.path().join("artifacts");
+        let web_output_dir = temp_dir.path().join("web");
+        write_synthetic_distillation_dataset(&data_dir)?;
+
+        run_ndarray(&tiny_training_cli(
+            data_dir,
+            artifact_dir.clone(),
+            web_output_dir.clone(),
+        ))?;
+
+        assert_complete_training_artifacts(&artifact_dir, &web_output_dir)?;
+        Ok(())
+    }
+
+    fn tiny_training_cli(data_dir: PathBuf, artifact_dir: PathBuf, web_output_dir: PathBuf) -> Cli {
+        Cli {
+            data_dir,
+            artifact_dir,
+            backend: BackendKind::Ndarray,
+            cuda_device: 0,
+            checkpoint: None,
+            checkpointing: CheckpointingMode::Off,
+            num_epochs: 1,
+            batch_size: 2,
+            num_workers: 1,
+            seed: 7,
+            learning_rate: 1e-3,
+            hard_label_weight: 1.0,
+            teacher_weight: 0.0,
+            architecture: ArchitecturePreset::MiniShared,
+            hidden_1: Some(32),
+            hidden_2: Some(32),
+            hidden_3: Some(32),
+            hidden_4: Some(32),
+            dropout: 0.0,
+            train_rows: None,
+            valid_rows: None,
+            test_rows: None,
+            threshold_bins: 16,
+            web_output_dir: Some(web_output_dir),
+        }
+    }
+
+    fn write_synthetic_distillation_dataset(data_dir: &Path) -> Result<(), Box<dyn Error>> {
+        fs::create_dir_all(data_dir)?;
+        for key in DISTILLATION_DATASET_FILES {
+            match *key {
+                "manifest.json" => write_synthetic_manifest(data_dir)?,
+                "train.parquet" | "validation.parquet" | "test.parquet" => {
+                    write_synthetic_split(&data_dir.join(key))?;
+                }
+                "vocabulary.json" => fs::write(data_dir.join(key), "{}\n")?,
+                _ => fs::write(data_dir.join(key), "synthetic fixture\n")?,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn write_synthetic_manifest(data_dir: &Path) -> Result<(), Box<dyn Error>> {
+        fs::write(
+            data_dir.join("manifest.json"),
+            serde_json::to_vec_pretty(&json!({
+                "vector_widths": {
+                    "pathway": ModelHead::Pathway.output_width(),
+                    "superclass": ModelHead::Superclass.output_width(),
+                    "class_": ModelHead::Class.output_width(),
+                }
+            }))?,
+        )?;
+        Ok(())
+    }
+
+    fn write_synthetic_split(path: &Path) -> Result<(), Box<dyn Error>> {
+        let smiles: ArrayRef = Arc::new(StringArray::from(SYNTHETIC_SMILES.to_vec()));
+        let cids: ArrayRef = Arc::new(Int64Array::from(SYNTHETIC_CIDS.to_vec()));
+        let pathway_ids = label_array(&SYNTHETIC_LABELS);
+        let superclass_ids = label_array(&SYNTHETIC_LABELS);
+        let class_ids = label_array(&SYNTHETIC_LABELS);
+        let fields = vec![
+            field_for_array("smiles", &smiles),
+            field_for_array("cid", &cids),
+            field_for_array("pathway_ids", &pathway_ids),
+            field_for_array("superclass_ids", &superclass_ids),
+            field_for_array("class_ids", &class_ids),
+        ];
+        let schema = Arc::new(Schema::new(fields));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![smiles, cids, pathway_ids, superclass_ids, class_ids],
+        )?;
+        let mut writer = ArrowWriter::try_new(File::create(path)?, schema, None)?;
+        writer.write(&batch)?;
+        writer.close()?;
+        Ok(())
+    }
+
+    fn label_array(labels: &[u16]) -> ArrayRef {
+        let mut builder = ListBuilder::new(UInt16Builder::new());
+        for label in labels {
+            builder.values().append_value(*label);
+            builder.append(true);
+        }
+        Arc::new(builder.finish())
+    }
+
+    fn field_for_array(name: &str, array: &ArrayRef) -> Field {
+        Field::new(name, array.data_type().clone(), false)
+    }
+
+    fn assert_complete_training_artifacts(
+        artifact_dir: &Path,
+        web_output_dir: &Path,
+    ) -> Result<(), Box<dyn Error>> {
+        for path in [
+            artifact_dir.join("training-config.json"),
+            artifact_dir.join("dataset-manifest.json"),
+            artifact_dir.join("model.mpk"),
+            artifact_dir.join("metrics.json"),
+            artifact_dir.join("test-metrics.json"),
+            artifact_dir.join("thresholds.json"),
+            artifact_dir.join("threshold-calibration.json"),
+            artifact_dir.join("quantization-report.json"),
+            web_output_dir.join("thresholds.json"),
+            web_output_dir.join("shared/shared.q4-kernel.npz"),
+            web_output_dir.join("pathway/pathway.q4-kernel.npz"),
+            web_output_dir.join("superclass/superclass.q4-kernel.npz"),
+            web_output_dir.join("class/class.q4-kernel.npz"),
+        ] {
+            assert!(path.exists(), "expected artifact {}", path.display());
+        }
+
+        let quantization_report: serde_json::Value = serde_json::from_str(&fs::read_to_string(
+            artifact_dir.join("quantization-report.json"),
+        )?)?;
+        assert_eq!(quantization_report["variants"][0]["variant"], "q4-block32");
+        assert_eq!(quantization_report["rows"], SYNTHETIC_SMILES.len());
+
+        let calibration_report: serde_json::Value = serde_json::from_str(&fs::read_to_string(
+            artifact_dir.join("threshold-calibration.json"),
+        )?)?;
+        assert_eq!(calibration_report["rows"], SYNTHETIC_SMILES.len());
+        assert_eq!(calibration_report["bins"], 16);
+        Ok(())
     }
 }

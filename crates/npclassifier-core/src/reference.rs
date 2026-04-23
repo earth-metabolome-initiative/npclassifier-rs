@@ -445,7 +445,7 @@ mod tests {
         let output = ClassificationOutput {
             raw: RawPredictions {
                 pathway: vec![0.8; 7],
-                superclass: vec![0.4; 77],
+                superclass: vec![0.4; 76],
                 class: vec![0.2; 687],
             },
             voted: VoteOutcome {

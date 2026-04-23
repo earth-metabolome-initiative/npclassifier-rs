@@ -1,82 +1,53 @@
-//! Calibrate multilabel decision thresholds on the validation split.
+//! Validation-set threshold calibration.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::Arc;
 
-use burn::backend::{Cuda, NdArray};
-use burn::prelude::{Backend, Module};
-use burn::record::CompactRecorder;
+use burn::prelude::Backend;
 use burn::tensor::Transaction;
 use burn::train::InferenceStep;
-use clap::{Parser, ValueEnum};
 use indicatif::{ProgressBar, ProgressStyle};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use npclassifier_core::{ClassificationThresholds, ModelHead};
 
-use npclassifier_train::data::{
-    NpClassifierBatch, TeacherSplitStorage, build_dataloader, load_split_storage,
-};
-use npclassifier_train::error::TrainingError;
-use npclassifier_train::metric::{ConfusionCounts, matthews_correlation};
-use npclassifier_train::model::{NpClassifierOutput, StudentModel, StudentModelConfig};
+use crate::data::{NpClassifierBatch, TeacherSplitStorage};
+use crate::error::TrainingError;
+use crate::metric::{ConfusionCounts, matthews_correlation};
+use crate::model::{NpClassifierOutput, StudentModel};
 
-const DEFAULT_DATA_DIR: &str = "data/distillation/teacher-splits";
-const DEFAULT_BATCH_SIZE: usize = 2048;
-const DEFAULT_NUM_WORKERS: usize = 8;
-const DEFAULT_THRESHOLD_BINS: u32 = 10_000;
+/// Default number of score buckets used for threshold search.
+pub const DEFAULT_THRESHOLD_BINS: u32 = 10_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-enum BackendKind {
-    Cuda,
-    Ndarray,
-}
-
-#[derive(Debug, Parser)]
-#[command(name = "npclassifier-calibrate-thresholds")]
-#[command(about = "Calibrate per-head decision thresholds on the validation split")]
-struct Cli {
-    #[arg(long, default_value = DEFAULT_DATA_DIR)]
-    data_dir: PathBuf,
-    #[arg(long)]
-    artifact_dir: PathBuf,
-    #[arg(long, value_enum, default_value_t = BackendKind::Cuda)]
-    backend: BackendKind,
-    #[arg(long, default_value_t = 0)]
-    cuda_device: usize,
-    #[arg(long, default_value_t = DEFAULT_BATCH_SIZE)]
-    batch_size: usize,
-    #[arg(long, default_value_t = DEFAULT_NUM_WORKERS)]
-    num_workers: usize,
-    #[arg(long)]
-    validation_rows: Option<usize>,
-    #[arg(long, default_value_t = DEFAULT_THRESHOLD_BINS)]
-    bins: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct SavedTrainingConfig {
-    model: StudentModelConfig,
-    hard_label_weight: f32,
-    teacher_weight: f32,
-}
-
+/// Calibration summary for one prediction head.
 #[derive(Debug, Clone, Copy, Serialize)]
-struct HeadCalibration {
-    legacy_threshold: f32,
-    legacy_mcc: f64,
-    calibrated_threshold: f32,
-    calibrated_mcc: f64,
+pub struct HeadCalibration {
+    /// Legacy fixed threshold used before validation calibration.
+    pub legacy_threshold: f32,
+    /// MCC at the legacy fixed threshold.
+    pub legacy_mcc: f64,
+    /// Validation-selected threshold.
+    pub calibrated_threshold: f32,
+    /// MCC at the validation-selected threshold.
+    pub calibrated_mcc: f64,
 }
 
+/// Threshold calibration report written after training.
 #[derive(Debug, Serialize)]
-struct ThresholdCalibrationReport {
-    rows: usize,
-    bins: u32,
-    thresholds: ClassificationThresholds,
-    pathway: HeadCalibration,
-    superclass: HeadCalibration,
-    class: HeadCalibration,
+pub struct ThresholdCalibrationReport {
+    /// Number of validation rows used.
+    pub rows: usize,
+    /// Number of histogram buckets used for threshold search.
+    pub bins: u32,
+    /// Calibrated threshold triple.
+    pub thresholds: ClassificationThresholds,
+    /// Pathway-head calibration details.
+    pub pathway: HeadCalibration,
+    /// Superclass-head calibration details.
+    pub superclass: HeadCalibration,
+    /// Class-head calibration details.
+    pub class: HeadCalibration,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -150,9 +121,9 @@ impl ThresholdHistogram {
             calibrated_threshold: 1.0,
             calibrated_mcc: matthews_correlation(ConfusionCounts {
                 tp: 0,
-                tn: u64_to_u32(self.total_negatives),
+                tn: self.total_negatives,
                 fp: 0,
-                fn_: u64_to_u32(self.total_positives),
+                fn_: self.total_positives,
             }),
         };
         let mut cumulative_positive = 0_u64;
@@ -164,10 +135,10 @@ impl ThresholdHistogram {
             cumulative_negative += bucket.negatives;
 
             let counts = ConfusionCounts {
-                tp: u64_to_u32(cumulative_positive),
-                fp: u64_to_u32(cumulative_negative),
-                fn_: u64_to_u32(self.total_positives - cumulative_positive),
-                tn: u64_to_u32(self.total_negatives - cumulative_negative),
+                tp: cumulative_positive,
+                fp: cumulative_negative,
+                fn_: self.total_positives - cumulative_positive,
+                tn: self.total_negatives - cumulative_negative,
             };
             let threshold = bucket_to_threshold(
                 u32::try_from(index).expect("bucket index should fit into u32"),
@@ -195,79 +166,24 @@ impl ThresholdHistogram {
         }
 
         ConfusionCounts {
-            tp: u64_to_u32(positive),
-            fp: u64_to_u32(negative),
-            fn_: u64_to_u32(self.total_positives - positive),
-            tn: u64_to_u32(self.total_negatives - negative),
+            tp: positive,
+            fp: negative,
+            fn_: self.total_positives - positive,
+            tn: self.total_negatives - negative,
         }
     }
 }
 
-fn main() -> Result<(), TrainingError> {
-    let cli = Cli::parse();
-    match cli.backend {
-        BackendKind::Cuda => run_cuda(&cli),
-        BackendKind::Ndarray => run_ndarray(&cli),
-    }
-}
-
-fn run_cuda(cli: &Cli) -> Result<(), TrainingError> {
-    type BackendImpl = Cuda<f32, i32>;
-    let device = burn::backend::cuda::CudaDevice::new(cli.cuda_device);
-    run_calibration::<BackendImpl>(cli, device)
-}
-
-fn run_ndarray(cli: &Cli) -> Result<(), TrainingError> {
-    type BackendImpl = NdArray;
-    let device = burn::backend::ndarray::NdArrayDevice::Cpu;
-    run_calibration::<BackendImpl>(cli, device)
-}
-
-fn run_calibration<B: Backend>(cli: &Cli, device: B::Device) -> Result<(), TrainingError> {
-    let config = load_saved_training_config(&cli.artifact_dir)?;
-    let validation_storage =
-        load_split_storage(&cli.data_dir, "validation", cli.validation_rows, false)?;
-    let loader = build_dataloader::<B>(
-        &validation_storage,
-        cli.batch_size,
-        cli.num_workers,
-        None,
-        false,
-    );
-    let model = config
-        .model
-        .init::<B>(&device, config.hard_label_weight, config.teacher_weight)
-        .load_file(
-            cli.artifact_dir.join("model"),
-            &CompactRecorder::new(),
-            &device,
-        )
-        .map_err(|error| TrainingError::Burn(error.to_string()))?;
-    let report = calibrate_validation_thresholds(&model, &validation_storage, &loader, cli.bins)?;
-
-    fs::write(
-        cli.artifact_dir.join("thresholds.json"),
-        serde_json::to_string_pretty(&report.thresholds)?,
-    )?;
-    fs::write(
-        cli.artifact_dir.join("threshold-calibration.json"),
-        serde_json::to_string_pretty(&report)?,
-    )?;
-    println!("{}", serde_json::to_string_pretty(&report)?);
-
-    Ok(())
-}
-
-fn load_saved_training_config(artifact_dir: &Path) -> Result<SavedTrainingConfig, TrainingError> {
-    Ok(serde_json::from_str(&fs::read_to_string(
-        artifact_dir.join("training-config.json"),
-    )?)?)
-}
-
-fn calibrate_validation_thresholds<B: Backend>(
+/// Calibrates thresholds for all three heads on the validation split.
+///
+/// # Errors
+///
+/// Returns an error if predictions cannot be synchronized or decoded, or if the
+/// calibration histogram cannot represent the configured number of bins.
+pub fn calibrate_validation_thresholds<B: Backend>(
     model: &StudentModel<B>,
     storage: &TeacherSplitStorage,
-    loader: &std::sync::Arc<dyn burn::data::dataloader::DataLoader<B, NpClassifierBatch>>,
+    loader: &Arc<dyn burn::data::dataloader::DataLoader<B, NpClassifierBatch>>,
     bins: u32,
 ) -> Result<ThresholdCalibrationReport, TrainingError> {
     let mut pathway_histogram = ThresholdHistogram::new(bins)?;
@@ -312,6 +228,27 @@ fn calibrate_validation_thresholds<B: Backend>(
     })
 }
 
+/// Writes calibrated thresholds and the full calibration report.
+///
+/// # Errors
+///
+/// Returns an error if either JSON file cannot be serialized or written.
+pub fn write_threshold_report(
+    artifact_dir: &Path,
+    report: &ThresholdCalibrationReport,
+) -> Result<(), TrainingError> {
+    fs::write(
+        artifact_dir.join("thresholds.json"),
+        serde_json::to_string_pretty(&report.thresholds)?,
+    )?;
+    fs::write(
+        artifact_dir.join("threshold-calibration.json"),
+        serde_json::to_string_pretty(report)?,
+    )?;
+
+    Ok(())
+}
+
 fn observe_batch<B: Backend>(
     pathway_histogram: &mut ThresholdHistogram,
     superclass_histogram: &mut ThresholdHistogram,
@@ -345,9 +282,9 @@ fn observe_batch<B: Backend>(
     let class_predictions = class_predictions
         .to_vec::<f32>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?;
-    let pathway_targets = decode_targets(pathway_targets)?;
-    let superclass_targets = decode_targets(superclass_targets)?;
-    let class_targets = decode_targets(class_targets)?;
+    let pathway_targets = decode_targets(&pathway_targets)?;
+    let superclass_targets = decode_targets(&superclass_targets)?;
+    let class_targets = decode_targets(&class_targets)?;
 
     pathway_histogram.observe(&pathway_predictions, &pathway_targets)?;
     superclass_histogram.observe(&superclass_predictions, &superclass_targets)?;
@@ -356,9 +293,9 @@ fn observe_batch<B: Backend>(
     Ok(())
 }
 
-fn decode_targets(targets: burn::tensor::TensorData) -> Result<Vec<bool>, TrainingError> {
+fn decode_targets(targets: &burn::tensor::TensorData) -> Result<Vec<bool>, TrainingError> {
     Ok(targets
-        .to_vec::<i32>()
+        .to_vec::<i64>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?
         .into_iter()
         .map(|value| value != 0)
@@ -403,6 +340,41 @@ fn bucket_to_threshold(bucket: u32, bins: u32) -> f32 {
     (f64::from(bucket) / f64::from(bins)) as f32
 }
 
-fn u64_to_u32(value: u64) -> u32 {
-    u32::try_from(value).expect("validation calibration counts should fit into u32")
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn threshold_histogram_selects_mcc_optimal_cutoff() {
+        let mut histogram = ThresholdHistogram::new(10).expect("histogram");
+        histogram
+            .observe(&[0.05, 0.15, 0.85, 0.95], &[false, false, true, true])
+            .expect("synthetic observations");
+
+        let calibration = histogram.calibrate(0.5);
+
+        assert_eq!(
+            histogram.counts_at_threshold(0.5),
+            ConfusionCounts {
+                tp: 2,
+                tn: 2,
+                fp: 0,
+                fn_: 0,
+            }
+        );
+        assert!((calibration.legacy_mcc - 1.0).abs() < f64::EPSILON);
+        assert!((calibration.calibrated_mcc - 1.0).abs() < f64::EPSILON);
+        assert!((0.2..=0.9).contains(&calibration.calibrated_threshold));
+    }
+
+    #[test]
+    fn threshold_histogram_rejects_non_finite_predictions() {
+        let mut histogram = ThresholdHistogram::new(4).expect("histogram");
+
+        let error = histogram
+            .observe(&[f32::NAN], &[true])
+            .expect_err("non-finite predictions should be rejected");
+
+        assert!(error.to_string().contains("non-finite"));
+    }
 }

@@ -561,6 +561,7 @@ impl ClassifierWorker {
     }
 
     fn post(&self, _message: &WebWorkerRequest) -> Result<(), String> {
+        let _ = self;
         Err(String::from(
             "worker classification is only available in the browser build",
         ))
@@ -762,6 +763,7 @@ fn elapsed_since_request_started(request_started_at: RequestStartedAt) -> Option
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::unnecessary_wraps)]
 fn elapsed_since_request_started(request_started_at: RequestStartedAt) -> Option<Duration> {
     Some(request_started_at.elapsed())
 }
@@ -813,12 +815,8 @@ mod tests {
 
     #[test]
     fn eta_is_only_reported_for_classification_progress() {
-        let eta = estimate_loading_eta_seconds(
-            "Loading model",
-            1,
-            10,
-            Some(Instant::now() - Duration::from_secs(4)),
-        );
+        let eta =
+            estimate_loading_eta_seconds("Loading model", 1, 10, Some(started_at_seconds_ago(4)));
 
         assert_eq!(eta, None);
     }
@@ -829,7 +827,7 @@ mod tests {
             "Classifying 10 SMILES",
             2,
             10,
-            Some(Instant::now() - Duration::from_secs(2)),
+            Some(started_at_seconds_ago(2)),
         );
 
         assert_eq!(eta, Some(8));
@@ -839,5 +837,11 @@ mod tests {
     fn native_hint_is_only_shown_for_very_long_runs() {
         assert!(!should_suggest_native_run(Some(3_600)));
         assert!(should_suggest_native_run(Some(3_601)));
+    }
+
+    fn started_at_seconds_ago(seconds: u64) -> Instant {
+        Instant::now()
+            .checked_sub(Duration::from_secs(seconds))
+            .expect("test duration should fit in Instant range")
     }
 }

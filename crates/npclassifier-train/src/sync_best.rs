@@ -57,6 +57,7 @@ use serde::{Deserialize, Serialize};
 use npclassifier_core::ModelHead;
 
 use crate::error::TrainingError;
+use crate::evaluation::merge_counts;
 use crate::metric::{ConfusionCounts, counts_from_tensors, matthews_correlation};
 use crate::model::StudentModel;
 
@@ -179,7 +180,6 @@ where
     }
 
     fn run_training_epoch(
-        &self,
         learner: &mut Learner<LC>,
         dataloader: &TrainLoader<LC>,
         epoch_total: usize,
@@ -235,7 +235,6 @@ where
     }
 
     fn run_validation_epoch(
-        &self,
         learner: &Learner<LC>,
         dataloader: &ValidLoader<LC>,
         epoch_total: usize,
@@ -310,8 +309,8 @@ where
         let mut early_stopping = early_stopping;
         let mut best_class_mcc = None;
 
-        for epoch in starting_epoch..num_epochs + 1 {
-            self.run_training_epoch(
+        for epoch in starting_epoch..=num_epochs {
+            Self::run_training_epoch(
                 &mut learner,
                 &dataloader_train,
                 num_epochs,
@@ -329,7 +328,7 @@ where
                 break;
             }
 
-            let class_mcc = match self.run_validation_epoch(
+            let class_mcc = match Self::run_validation_epoch(
                 &learner,
                 &dataloader_valid,
                 num_epochs,
@@ -372,15 +371,6 @@ where
         }
 
         (learner.model(), event_processor)
-    }
-}
-
-fn merge_counts(left: ConfusionCounts, right: ConfusionCounts) -> ConfusionCounts {
-    ConfusionCounts {
-        tp: left.tp + right.tp,
-        tn: left.tn + right.tn,
-        fp: left.fp + right.fp,
-        fn_: left.fn_ + right.fn_,
     }
 }
 
