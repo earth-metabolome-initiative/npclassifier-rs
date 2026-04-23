@@ -50,9 +50,9 @@ pub fn App() -> Element {
     rsx! {
         main { class: "page",
             Header {
-                repository_url: REPOSITORY_URL,
-                dataset_url: DISTILLATION_DATASET_URL,
-                dataset_badge_url: DISTILLATION_DATASET_BADGE_URL,
+                repository_href: REPOSITORY_URL,
+                dataset_href: DISTILLATION_DATASET_URL,
+                dataset_badge_src: DISTILLATION_DATASET_BADGE_URL,
             }
 
             section { class: "layout",

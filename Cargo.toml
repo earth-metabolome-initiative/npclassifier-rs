@@ -34,7 +34,7 @@ smiles-parser = { git = "https://github.com/earth-metabolome-initiative/smiles-p
 tempfile = "3.23.0"
 thiserror = "2.0.18"
 tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
-zenodo-rs = { version = "0.1.2", features = ["checksums"] }
+zenodo-rs = { version = "0.1.5", features = ["checksums"] }
 zstd = "0.13.3"
 
 [workspace.lints.clippy]

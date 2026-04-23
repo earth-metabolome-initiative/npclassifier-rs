@@ -1063,6 +1063,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "client-uploader-traits"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93e798ac3dcc76ddca3e24d91a43f27e4db744074e90b6130a1ea0c1491a2f5d"
+dependencies = [
+ "url",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.58"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7840,12 +7849,13 @@ dependencies = [
 
 [[package]]
 name = "zenodo-rs"
-version = "0.1.2"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a4e538201b23f83aed0a8ae4a8b5c587123e10830c4772a301ee1d873419f34"
+checksum = "10b27b7db6168f9f00cd01bdb6ee2bb830e2e7f3612ed76ec2638149553a1c93"
 dependencies = [
  "bytes",
  "chrono",
+ "client-uploader-traits",
  "futures-core",
  "futures-util",
  "hex",
