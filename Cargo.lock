@@ -7849,9 +7849,9 @@ dependencies = [
 
 [[package]]
 name = "zenodo-rs"
-version = "0.1.5"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10b27b7db6168f9f00cd01bdb6ee2bb830e2e7f3612ed76ec2638149553a1c93"
+checksum = "022d38e4270ff6d987bf3d8cc489a0ffad7602474d90998d98f07e42e4c05daa"
 dependencies = [
  "bytes",
  "chrono",
