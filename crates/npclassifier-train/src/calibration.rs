@@ -295,7 +295,7 @@ fn observe_batch<B: Backend>(
 
 fn decode_targets(targets: &burn::tensor::TensorData) -> Result<Vec<bool>, TrainingError> {
     Ok(targets
-        .to_vec::<i64>()
+        .to_vec::<i32>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?
         .into_iter()
         .map(|value| value != 0)

@@ -248,7 +248,7 @@ fn run_cuda(cli: &Cli) -> Result<(), TrainingError> {
 }
 
 fn run_ndarray(cli: &Cli) -> Result<(), TrainingError> {
-    type BackendImpl = Autodiff<NdArray>;
+    type BackendImpl = Autodiff<NdArray<f32, i32>>;
     let device = burn::backend::ndarray::NdArrayDevice::Cpu;
     run_training::<BackendImpl>(cli, device, false)
 }

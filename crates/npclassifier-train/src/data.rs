@@ -93,11 +93,11 @@ pub struct NpClassifierBatch {
     /// Dense `6144` counted Morgan inputs.
     pub(crate) inputs: Vec<f32>,
     /// Pathway multilabel targets.
-    pub(crate) pathway_targets: Vec<i64>,
+    pub(crate) pathway_targets: Vec<i32>,
     /// Superclass multilabel targets.
-    pub(crate) superclass_targets: Vec<i64>,
+    pub(crate) superclass_targets: Vec<i32>,
     /// Class multilabel targets.
-    pub(crate) class_targets: Vec<i64>,
+    pub(crate) class_targets: Vec<i32>,
     /// Optional pathway teacher probabilities.
     pub(crate) pathway_teacher: Option<Vec<f32>>,
     /// Optional superclass teacher probabilities.
@@ -212,7 +212,7 @@ impl NpClassifierBatcher {
         }
     }
 
-    fn append_targets(targets: &mut [i64], row_in_batch: usize, width: usize, labels: &[u16]) {
+    fn append_targets(targets: &mut [i32], row_in_batch: usize, width: usize, labels: &[u16]) {
         for label in labels {
             targets[row_in_batch * width + usize::from(*label)] = 1;
         }
@@ -253,9 +253,9 @@ where
     fn batch(&self, items: Vec<usize>, _device: &B::Device) -> NpClassifierBatch {
         let batch_len = items.len();
         let mut inputs = vec![0.0_f32; batch_len * FINGERPRINT_INPUT_WIDTH];
-        let mut pathway_targets = vec![0_i64; batch_len * PATHWAY_WIDTH];
-        let mut superclass_targets = vec![0_i64; batch_len * SUPERCLASS_WIDTH];
-        let mut class_targets = vec![0_i64; batch_len * CLASS_WIDTH];
+        let mut pathway_targets = vec![0_i32; batch_len * PATHWAY_WIDTH];
+        let mut superclass_targets = vec![0_i32; batch_len * SUPERCLASS_WIDTH];
+        let mut class_targets = vec![0_i32; batch_len * CLASS_WIDTH];
 
         let mut pathway_teacher = self
             .include_teacher

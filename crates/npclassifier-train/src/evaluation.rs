@@ -171,7 +171,7 @@ fn batch_fingerprint(inputs: &[f32], row_index: usize) -> Result<FingerprintInpu
 
 fn row_counts(
     predictions: &[f32],
-    targets: &[i64],
+    targets: &[i32],
     row_index: usize,
     width: usize,
     threshold: f32,

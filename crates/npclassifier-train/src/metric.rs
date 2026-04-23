@@ -354,7 +354,7 @@ pub fn counts_from_tensors<B: Backend>(
         .to_vec::<f32>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?;
     let targets = targets
-        .to_vec::<i64>()
+        .to_vec::<i32>()
         .map_err(|error| TrainingError::Burn(error.to_string()))?;
     let targets = targets
         .into_iter()
