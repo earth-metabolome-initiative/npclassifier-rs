@@ -17,8 +17,6 @@ const DEFAULT_EXCLUDED_STARTUP_SMILES: &str = "C1=C(C(C=C(C1O)Cl)Cl)Cl";
 const COPY_MESSAGE_CLEAR_MS: i32 = 2420;
 const REPOSITORY_URL: &str = "https://github.com/earth-metabolome-initiative/npclassifier-rs";
 const DISTILLATION_DATASET_URL: &str = "https://doi.org/10.5281/zenodo.19701295";
-const DISTILLATION_DATASET_BADGE_URL: &str =
-    "https://zenodo.org/badge/DOI/10.5281/zenodo.19701295.svg";
 const MINI_MODEL_TOOLTIP: &str = "Mini: compact distilled NPClassifier variant for routine browser use; usually close to Faithful, but it can differ on individual edge cases, at about 9 MiB in q4.";
 const FAITHFUL_MODEL_TOOLTIP: &str = "Faithful: q4 NPClassifier with the original architecture; larger and slower, but the better choice when you want the closest match to NPClassifier behavior, at about 121 MiB.";
 
@@ -52,7 +50,6 @@ pub fn App() -> Element {
             Header {
                 repository_href: REPOSITORY_URL,
                 dataset_href: DISTILLATION_DATASET_URL,
-                dataset_badge_src: DISTILLATION_DATASET_BADGE_URL,
             }
 
             section { class: "layout",

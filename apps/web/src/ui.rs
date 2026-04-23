@@ -44,11 +44,7 @@ enum IconKind {
 }
 
 #[component]
-pub fn Header(
-    repository_href: &'static str,
-    dataset_href: &'static str,
-    dataset_badge_src: &'static str,
-) -> Element {
+pub fn Header(repository_href: &'static str, dataset_href: &'static str) -> Element {
     rsx! {
         header { class: "hero",
             div { class: "hero-main",
@@ -65,17 +61,14 @@ pub fn Header(
             }
             div { class: "hero-links",
                 a {
-                    class: "hero-link hero-link-badge",
+                    class: "hero-link",
                     href: dataset_href,
                     target: "_blank",
                     rel: "noopener noreferrer",
                     title: "Open the Zenodo distilled dataset",
                     aria_label: "Open the Zenodo distilled dataset",
-                    img {
-                        class: "hero-badge",
-                        src: dataset_badge_src,
-                        alt: "Zenodo DOI badge for the NPClassifier distilled dataset",
-                    }
+                    {app_icon(IconKind::Download)}
+                    span { "Zenodo" }
                 }
                 a {
                     class: "hero-link",
