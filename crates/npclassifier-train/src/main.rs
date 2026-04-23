@@ -119,9 +119,9 @@ off: disable epoch-boundary checkpointing and export the final in-memory model."
     checkpointing: CheckpointingMode,
     #[arg(long, default_value_t = 20)]
     num_epochs: usize,
-    #[arg(long, default_value_t = 512)]
+    #[arg(long, default_value_t = 2048)]
     batch_size: usize,
-    #[arg(long, default_value_t = 8)]
+    #[arg(long, default_value_t = 16)]
     num_workers: usize,
     #[arg(long, default_value_t = 42)]
     seed: u64,
@@ -182,9 +182,9 @@ struct TrainingConfig {
     optimizer: burn::optim::AdamWConfig,
     #[config(default = 20)]
     num_epochs: usize,
-    #[config(default = 512)]
+    #[config(default = 2048)]
     batch_size: usize,
-    #[config(default = 8)]
+    #[config(default = 16)]
     num_workers: usize,
     #[config(default = 42)]
     seed: u64,
