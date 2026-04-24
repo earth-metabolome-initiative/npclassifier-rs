@@ -48,11 +48,11 @@ pub fn export_web_model<B: Backend>(
     let [pathway, superclass, class] = model.export_heads().map_err(TrainingError::Burn)?;
 
     if let Some(shared) = shared {
-        export_stack(output_dir, "shared", shared)?;
+        export_stack(output_dir, "shared", shared, "f32")?;
     }
-    export_head(output_dir, pathway)?;
-    export_head(output_dir, superclass)?;
-    export_head(output_dir, class)?;
+    export_head(output_dir, pathway, "f32")?;
+    export_head(output_dir, superclass, "f32")?;
+    export_head(output_dir, class, "f32")?;
     std::fs::write(
         output_dir.join("thresholds.json"),
         serde_json::to_string_pretty(&thresholds)?,
@@ -89,11 +89,11 @@ pub fn export_web_model_q4<B: Backend>(
     let class = quantize_head_q4(class)?;
 
     if let Some(shared) = shared {
-        export_stack(output_dir, "shared", shared)?;
+        export_stack(output_dir, "shared", shared, "q4-kernel")?;
     }
-    export_head(output_dir, pathway)?;
-    export_head(output_dir, superclass)?;
-    export_head(output_dir, class)?;
+    export_head(output_dir, pathway, "q4-kernel")?;
+    export_head(output_dir, superclass, "q4-kernel")?;
+    export_head(output_dir, class, "q4-kernel")?;
     std::fs::write(
         output_dir.join("thresholds.json"),
         serde_json::to_string_pretty(&thresholds)?,
@@ -106,10 +106,11 @@ fn export_stack(
     output_dir: &Path,
     name: &str,
     layers: Vec<ExportedHeadLayer>,
+    suffix: &str,
 ) -> Result<(), TrainingError> {
     let stack_dir = output_dir.join(name);
     std::fs::create_dir_all(&stack_dir)?;
-    let archive_path = stack_dir.join(format!("{name}.q4-kernel.npz"));
+    let archive_path = stack_dir.join(format!("{name}.{suffix}.npz"));
     let file = File::create(&archive_path)?;
     let mut archive = NpzWriter::new(file);
 
@@ -165,8 +166,8 @@ fn export_stack(
     Ok(())
 }
 
-fn export_head(output_dir: &Path, head: ExportedHead) -> Result<(), TrainingError> {
-    export_stack(output_dir, head.head.as_str(), head.layers)
+fn export_head(output_dir: &Path, head: ExportedHead, suffix: &str) -> Result<(), TrainingError> {
+    export_stack(output_dir, head.head.as_str(), head.layers, suffix)
 }
 
 fn quantize_head_q4(head: ExportedHead) -> Result<ExportedHead, TrainingError> {

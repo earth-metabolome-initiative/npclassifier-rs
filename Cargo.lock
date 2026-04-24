@@ -5898,8 +5898,11 @@ version = "0.1.0"
 source = "git+https://github.com/earth-metabolome-initiative/smiles-parser?branch=main#7ff01a959320ab1caba5149165dc03a210c3d755"
 dependencies = [
  "elements_rs",
+ "flate2",
  "geometric-traits",
  "hashbrown 0.16.1",
+ "indicatif",
+ "reqwest 0.12.28",
  "smallvec",
  "thiserror 2.0.18",
 ]

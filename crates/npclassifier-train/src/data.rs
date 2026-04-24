@@ -139,7 +139,8 @@ impl FingerprintCache {
 }
 
 #[derive(Debug)]
-struct DenseFingerprintEncoder {
+/// Host-side encoder for dense counted fingerprints used by the Burn model.
+pub struct DenseFingerprintEncoder {
     scratch: SmilesRdkitScratch,
     layered: LayeredCountEcfpFingerprint,
 }
@@ -154,7 +155,13 @@ impl Default for DenseFingerprintEncoder {
 }
 
 impl DenseFingerprintEncoder {
-    fn encode_into(
+    /// Encodes one SMILES string into the provided dense counted fingerprint row.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the SMILES cannot be parsed, normalized, or encoded
+    /// into the expected layered Morgan fingerprint layout.
+    pub fn encode_into(
         &mut self,
         smiles: &str,
         cid: i64,

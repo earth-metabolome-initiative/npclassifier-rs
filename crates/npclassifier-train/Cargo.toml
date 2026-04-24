@@ -18,7 +18,7 @@ parquet.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-smiles-parser.workspace = true
+smiles-parser = { workspace = true, features = ["datasets"] }
 thiserror.workspace = true
 tracing = "0.1.41"
 zstd.workspace = true

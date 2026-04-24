@@ -73,6 +73,16 @@ pub struct NpClassifierOutput<B: Backend> {
     pub class_targets: Tensor<B, 2, Int>,
 }
 
+/// Probability tensors produced by direct model inference.
+pub struct NpClassifierProbabilities<B: Backend> {
+    /// Pathway probabilities after sigmoid.
+    pub pathway: Tensor<B, 2>,
+    /// Superclass probabilities after sigmoid.
+    pub superclass: Tensor<B, 2>,
+    /// Class probabilities after sigmoid.
+    pub class: Tensor<B, 2>,
+}
+
 struct DeviceBatch<B: Backend> {
     inputs: Tensor<B, 2>,
     pathway_targets: Tensor<B, 2, Int>,
@@ -149,6 +159,29 @@ impl<B: Backend> NpClassifierOutput<B> {
             superclass_targets,
             class_targets,
         }
+    }
+}
+
+impl<B: Backend> NpClassifierProbabilities<B> {
+    /// Synchronizes all prediction tensors with the host.
+    pub fn sync(self) {
+        let _ = Transaction::default()
+            .register(self.pathway)
+            .register(self.superclass)
+            .register(self.class)
+            .execute();
+    }
+
+    /// Synchronizes a reduced checksum of the prediction tensors with the host.
+    ///
+    /// This forces all probability kernels to complete without transferring the
+    /// full `batch x labels` output matrices back to the CPU.
+    pub fn sync_reduced(self) {
+        let _ = Transaction::default()
+            .register(self.pathway.sum())
+            .register(self.superclass.sum())
+            .register(self.class.sum())
+            .execute();
     }
 }
 
@@ -385,6 +418,41 @@ impl StudentModelConfig {
 }
 
 impl<B: Backend> StudentModel<B> {
+    /// Runs direct inference on flat dense fingerprint inputs.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the flat input length does not match
+    /// `batch_len * FINGERPRINT_INPUT_WIDTH`.
+    pub fn predict_probabilities(
+        &self,
+        inputs: Vec<f32>,
+        batch_len: usize,
+    ) -> Result<NpClassifierProbabilities<B>, String> {
+        let expected_len = batch_len
+            .checked_mul(FINGERPRINT_INPUT_WIDTH)
+            .ok_or_else(|| "fingerprint batch length overflowed".to_owned())?;
+        if inputs.len() != expected_len {
+            return Err(format!(
+                "fingerprint input length mismatch: expected {expected_len}, got {}",
+                inputs.len()
+            ));
+        }
+
+        let device = self.device();
+        let inputs = Tensor::<B, 2>::from_data(
+            TensorData::new(inputs, [batch_len, FINGERPRINT_INPUT_WIDTH]),
+            &device,
+        );
+        let logits = self.forward_logits(inputs);
+
+        Ok(NpClassifierProbabilities {
+            pathway: sigmoid(logits.pathway),
+            superclass: sigmoid(logits.superclass),
+            class: sigmoid(logits.class),
+        })
+    }
+
     /// Quantize only the compatible `Linear` weight matrices, leaving biases and
     /// normalization parameters in float.
     #[must_use]
