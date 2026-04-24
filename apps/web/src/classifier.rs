@@ -839,6 +839,47 @@ mod tests {
         assert!(should_suggest_native_run(Some(3_601)));
     }
 
+    #[test]
+    fn bundled_mini_model_matches_embedded_ontology_widths() {
+        use std::path::Path;
+
+        use npclassifier_core::{
+            ClassificationThresholds, CountedMorganGenerator, EmbeddedOntology, PackedModelSet,
+            PackedModelVariant, classify_web_entry_with_thresholds,
+        };
+
+        let model_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("public")
+            .join("models")
+            .join("mini-shared");
+        let thresholds = serde_json::from_str::<ClassificationThresholds>(
+            &std::fs::read_to_string(model_dir.join("thresholds.json"))
+                .expect("bundled mini thresholds should be readable"),
+        )
+        .expect("bundled mini thresholds should decode");
+        let ontology = EmbeddedOntology::load().expect("embedded ontology should load");
+        let generator = CountedMorganGenerator::new();
+        let model = PackedModelSet::from_dir(&model_dir, PackedModelVariant::Q4Kernel)
+            .expect("bundled mini q4 model should load");
+
+        let entry = classify_web_entry_with_thresholds(
+            "C(=CC(=C(C(=O)O)N)C(=O)O)C=O",
+            &ontology,
+            &generator,
+            &model,
+            thresholds,
+        );
+
+        assert!(
+            entry.error.is_none(),
+            "classification failed: {:?}",
+            entry.error
+        );
+        assert_eq!(entry.pathway_scores.len(), ontology.pathway_count());
+        assert_eq!(entry.superclass_scores.len(), ontology.superclass_count());
+        assert_eq!(entry.class_scores.len(), ontology.class_count());
+    }
+
     fn started_at_seconds_ago(seconds: u64) -> Instant {
         Instant::now()
             .checked_sub(Duration::from_secs(seconds))
