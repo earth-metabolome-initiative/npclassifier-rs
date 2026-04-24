@@ -143,7 +143,7 @@ fn choose_default_smiles_index(len: usize) -> usize {
         0
     } else {
         let random_bits = js_sys::Math::random().to_bits();
-        let folded = random_bits ^ (random_bits >> 32);
+        let folded = (random_bits ^ (random_bits >> 32)) & u64::from(u32::MAX);
         usize::try_from(folded).unwrap_or(0) % len
     }
 }
