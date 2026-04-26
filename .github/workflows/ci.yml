@@ -51,6 +51,9 @@ jobs:
       - name: Check workspace
         run: cargo check --workspace
 
+      - name: Check examples
+        run: cargo check --workspace --examples
+
       - name: Check core all features
         run: cargo check -p npclassifier-core --all-features
 
@@ -63,8 +66,14 @@ jobs:
       - name: Test cargo-npc
         run: cargo test -p cargo-npc
 
+      - name: Test examples
+        run: cargo test --workspace --examples
+
       - name: Lint cargo-npc
-        run: cargo clippy -p cargo-npc -- -D warnings
+        run: cargo clippy -p cargo-npc --all-targets -- -D warnings
+
+      - name: Lint examples
+        run: cargo clippy --workspace --examples --all-features -- -D warnings
 
   web:
     name: Web
