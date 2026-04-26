@@ -1,0 +1,75 @@
+name: Mistaken prediction
+description: Report an NPClassifier.rs prediction that appears incorrect.
+title: "Mistaken prediction: "
+labels:
+  - bug
+  - prediction-report
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a prediction that looks wrong. The web app should prefill the structure, model, prediction, and runtime context. Please add the expected classification if you know it.
+
+  - type: textarea
+    id: smiles
+    attributes:
+      label: SMILES
+      description: Structure that produced the questionable prediction.
+      placeholder: CCO
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Browser model used for the prediction.
+      placeholder: Mini (mini-shared)
+    validations:
+      required: true
+
+  - type: textarea
+    id: prediction
+    attributes:
+      label: Current prediction
+      description: Pathway, superclass, and class labels currently assigned by NPClassifier.rs.
+      placeholder: |
+        Pathways: ...
+        Superclasses: ...
+        Classes: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scores
+    attributes:
+      label: Top scores
+      description: Highest model scores copied from the browser for triage.
+      placeholder: |
+        Pathway scores:
+        - ...
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected classification
+      description: If known, provide the expected pathway, superclass, and class labels.
+      placeholder: |
+        Pathways:
+        Superclasses:
+        Classes:
+
+  - type: textarea
+    id: app_context
+    attributes:
+      label: App context
+      description: Browser app version and page context.
+      placeholder: |
+        Model: ...
+        Web commit: ...
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional notes
+      description: Add references, links, screenshots, or why the prediction looks wrong.

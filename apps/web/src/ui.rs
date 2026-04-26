@@ -162,6 +162,7 @@ pub fn ResultPanel(
     entry_count: usize,
     active_index: usize,
     copy_entries_disabled: bool,
+    report_issue_href: Option<String>,
     copy_message: Option<String>,
     on_copy: EventHandler<()>,
     on_download: EventHandler<()>,
@@ -236,6 +237,20 @@ pub fn ResultPanel(
                         title: "Show next entry",
                         onclick: move |_| on_select_next.call(()),
                         {app_icon(IconKind::ArrowRight)}
+                    }
+                }
+            }
+
+            if let Some(report_issue_href) = report_issue_href {
+                div { class: "result-report",
+                    a {
+                        class: "report-link",
+                        href: "{report_issue_href}",
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        title: "Report a mistaken prediction on GitHub",
+                        aria_label: "Report this prediction as mistaken on GitHub",
+                        "Report mistaken prediction"
                     }
                 }
             }

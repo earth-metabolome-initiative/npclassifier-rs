@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
-use npclassifier_core::{WebBatchEntry as BatchEntry, WebScoredLabel as ScoredLabel};
+use npclassifier_core::{
+    WebBatchEntry as BatchEntry, WebModelVariant, WebScoredLabel as ScoredLabel,
+};
 use serde::Serialize;
+use std::fmt::Write as _;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, JsValue};
 #[cfg(target_arch = "wasm32")]
@@ -158,6 +161,195 @@ pub fn download_entries_as_json(entries: &[BatchEntry]) -> Result<String, String
     })
 }
 
+const PREDICTION_REPORT_TEMPLATE: &str = "mistaken-prediction.yml";
+const MAX_REPORT_URL_BYTES: usize = 6_000;
+const MAX_REPORT_SMILES_CHARS: usize = 900;
+const MAX_REPORT_FIELD_CHARS: usize = 1_200;
+const MAX_REPORT_CONTEXT_CHARS: usize = 700;
+const REPORT_SCORE_LIMIT_PER_HEAD: usize = 6;
+
+pub fn build_prediction_report_url(
+    repository_url: &str,
+    entry: &BatchEntry,
+    model: WebModelVariant,
+    git_commit: &str,
+    page_url: Option<&str>,
+) -> String {
+    let base_url = format!("{}/issues/new", repository_url.trim_end_matches('/'));
+    let url = assemble_prediction_report_url(&base_url, entry, model, git_commit, page_url, true);
+
+    if url.len() <= MAX_REPORT_URL_BYTES {
+        return url;
+    }
+
+    assemble_prediction_report_url(&base_url, entry, model, git_commit, page_url, false)
+}
+
+fn assemble_prediction_report_url(
+    base_url: &str,
+    entry: &BatchEntry,
+    model: WebModelVariant,
+    git_commit: &str,
+    page_url: Option<&str>,
+    include_scores: bool,
+) -> String {
+    let title = format!(
+        "Mistaken prediction: {}",
+        truncate_inline(&entry.smiles, 72)
+    );
+    let scores = if include_scores {
+        format_report_scores(entry)
+    } else {
+        String::from("Scores omitted because the prefilled report URL would be too long.")
+    };
+    let params = [
+        ("template", PREDICTION_REPORT_TEMPLATE.to_owned()),
+        ("title", title),
+        (
+            "smiles",
+            truncate_block(&entry.smiles, MAX_REPORT_SMILES_CHARS),
+        ),
+        (
+            "model",
+            format!("{} ({})", model.display_name(), model.slug()),
+        ),
+        (
+            "prediction",
+            truncate_block(&format_report_prediction(entry), MAX_REPORT_FIELD_CHARS),
+        ),
+        ("scores", truncate_block(&scores, MAX_REPORT_FIELD_CHARS)),
+        (
+            "app_context",
+            truncate_block(
+                &format_report_context(model, git_commit, page_url),
+                MAX_REPORT_CONTEXT_CHARS,
+            ),
+        ),
+    ];
+
+    let query = params
+        .iter()
+        .map(|(key, value)| format!("{key}={}", percent_encode(value)))
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{base_url}?{query}")
+}
+
+fn format_report_prediction(entry: &BatchEntry) -> String {
+    let mut report = String::new();
+    if let Some(error) = &entry.error {
+        let _ = writeln!(report, "Error: {error}");
+    }
+    let _ = writeln!(
+        report,
+        "Pathways: {}",
+        join_report_labels(&entry.labels.pathways)
+    );
+    let _ = writeln!(
+        report,
+        "Superclasses: {}",
+        join_report_labels(&entry.labels.superclasses)
+    );
+    let _ = writeln!(
+        report,
+        "Classes: {}",
+        join_report_labels(&entry.labels.classes)
+    );
+    report
+}
+
+fn format_report_scores(entry: &BatchEntry) -> String {
+    let mut report = String::new();
+    write_score_section(&mut report, "Pathway scores", &entry.pathway_scores);
+    write_score_section(&mut report, "Superclass scores", &entry.superclass_scores);
+    write_score_section(&mut report, "Class scores", &entry.class_scores);
+    report
+}
+
+fn write_score_section(report: &mut String, title: &str, scores: &[ScoredLabel]) {
+    let _ = writeln!(report, "{title}:");
+    let mut sorted = scores.iter().collect::<Vec<_>>();
+    sorted.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then_with(|| left.index.cmp(&right.index))
+    });
+
+    if sorted.is_empty() {
+        let _ = writeln!(report, "- None");
+        return;
+    }
+
+    for score in sorted.into_iter().take(REPORT_SCORE_LIMIT_PER_HEAD) {
+        let _ = writeln!(
+            report,
+            "- {} ({}, {:.3})",
+            score.name, score.index, score.score
+        );
+    }
+}
+
+fn format_report_context(
+    model: WebModelVariant,
+    git_commit: &str,
+    page_url: Option<&str>,
+) -> String {
+    let mut context = String::new();
+    let _ = writeln!(
+        context,
+        "Model: {} ({})",
+        model.display_name(),
+        model.slug()
+    );
+    let _ = writeln!(context, "Web commit: {git_commit}");
+    if let Some(page_url) = page_url.filter(|url| !url.trim().is_empty()) {
+        let _ = writeln!(context, "Page URL: {page_url}");
+    }
+    context
+}
+
+fn join_report_labels(labels: &[String]) -> String {
+    if labels.is_empty() {
+        String::from("None")
+    } else {
+        labels.join("; ")
+    }
+}
+
+fn truncate_inline(value: &str, max_chars: usize) -> String {
+    truncate_text(value, max_chars).replace(['\r', '\n'], " ")
+}
+
+fn truncate_block(value: &str, max_chars: usize) -> String {
+    truncate_text(value, max_chars)
+}
+
+fn truncate_text(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated = chars.by_ref().take(max_chars).collect::<String>();
+    if chars.next().is_some() {
+        format!("{truncated}\n[truncated by NPClassifier.rs web report link]")
+    } else {
+        truncated
+    }
+}
+
+fn percent_encode(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(char::from(byte));
+            }
+            _ => {
+                let _ = write!(encoded, "%{byte:02X}");
+            }
+        }
+    }
+    encoded
+}
+
 fn copy_scores(scores: &[ScoredLabel]) -> Vec<CopiedScore> {
     scores
         .iter()
@@ -196,7 +388,9 @@ mod tests {
         PredictionLabels, WebBatchEntry as BatchEntry, WebScoredLabel as ScoredLabel,
     };
 
-    use super::{build_copy_json, download_filename};
+    use super::{
+        MAX_REPORT_URL_BYTES, build_copy_json, build_prediction_report_url, download_filename,
+    };
 
     #[test]
     fn build_copy_json_contains_named_vectors() {
@@ -283,6 +477,85 @@ mod tests {
         assert_eq!(batch_hash.len(), 6);
         assert!(single_hash.chars().all(|ch| ch.is_ascii_hexdigit()));
         assert!(batch_hash.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn prediction_report_url_prefills_issue_form_fields() {
+        let entry = BatchEntry {
+            smiles: "CCO".to_owned(),
+            error: None,
+            labels: PredictionLabels::new(
+                vec!["Amino acids and Peptides".to_owned()],
+                vec!["Small peptides".to_owned()],
+                vec!["Aminoacids".to_owned()],
+                Some(false),
+            ),
+            pathway_scores: vec![ScoredLabel {
+                index: 1,
+                name: "Amino acids and Peptides".to_owned(),
+                score: 0.99,
+            }],
+            superclass_scores: vec![ScoredLabel {
+                index: 62,
+                name: "Small peptides".to_owned(),
+                score: 0.98,
+            }],
+            class_scores: vec![ScoredLabel {
+                index: 34,
+                name: "Aminoacids".to_owned(),
+                score: 0.97,
+            }],
+        };
+
+        let url = build_prediction_report_url(
+            "https://github.com/earth-metabolome-initiative/npclassifier-rs/",
+            &entry,
+            npclassifier_core::WebModelVariant::MiniShared,
+            "abcdef123456",
+            Some("https://npc.earthmetabolome.org/"),
+        );
+
+        assert!(url.starts_with(
+            "https://github.com/earth-metabolome-initiative/npclassifier-rs/issues/new?"
+        ));
+        assert!(url.contains("template=mistaken-prediction.yml"));
+        assert!(url.contains("title=Mistaken%20prediction%3A%20CCO"));
+        assert!(url.contains("smiles=CCO"));
+        assert!(url.contains("model=Mini%20%28mini-shared%29"));
+        assert!(url.contains("prediction=Pathways%3A%20Amino%20acids%20and%20Peptides"));
+        assert!(url.contains("scores=Pathway%20scores%3A"));
+        assert!(url.contains("app_context=Model%3A%20Mini%20%28mini-shared%29"));
+        assert!(!url.contains("labels="));
+    }
+
+    #[test]
+    fn prediction_report_url_stays_bounded_for_large_smiles() {
+        let entry = BatchEntry {
+            smiles: "C".repeat(20_000),
+            error: Some("synthetic failure".to_owned()),
+            labels: PredictionLabels::new(Vec::new(), Vec::new(), Vec::new(), None),
+            pathway_scores: Vec::new(),
+            superclass_scores: Vec::new(),
+            class_scores: (0..200)
+                .map(|index| ScoredLabel {
+                    index,
+                    name: format!("Class {index}"),
+                    score: 1.0,
+                })
+                .collect(),
+        };
+
+        let url = build_prediction_report_url(
+            "https://github.com/earth-metabolome-initiative/npclassifier-rs",
+            &entry,
+            npclassifier_core::WebModelVariant::Full,
+            "abcdef123456",
+            None,
+        );
+
+        assert!(url.len() <= MAX_REPORT_URL_BYTES);
+        assert!(url.contains("%5Btruncated%20by%20NPClassifier.rs%20web%20report%20link%5D"));
+        assert!(url.contains("model=Faithful%20%28full%29"));
     }
 
     fn has_json_extension(filename: &str) -> bool {

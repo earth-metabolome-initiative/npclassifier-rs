@@ -477,6 +477,37 @@ button {
     font-size: 0.94rem;
 }
 
+.result-report {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.report-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    padding: 0.38rem 0.8rem;
+    color: var(--muted);
+    text-decoration: none;
+    border-radius: 999px;
+    border: 1px solid rgba(20, 34, 41, 0.1);
+    background: rgba(20, 34, 41, 0.035);
+    font-size: 0.88rem;
+    transition:
+        transform 140ms ease,
+        border-color 140ms ease,
+        background 140ms ease,
+        color 140ms ease;
+}
+
+.report-link:hover {
+    transform: translateY(-1px);
+    color: #205e8c;
+    border-color: rgba(32, 94, 140, 0.2);
+    background: rgba(32, 94, 140, 0.08);
+}
+
 .copy-note,
 .copy-toast {
     padding: 0.8rem 0.95rem;

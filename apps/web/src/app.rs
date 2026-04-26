@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 use npclassifier_core::MockFingerprintRecord;
 
 use crate::{
-    actions::{copy_entries_as_json, download_entries_as_json},
+    actions::{build_prediction_report_url, copy_entries_as_json, download_entries_as_json},
     classifier::{MAX_WEB_INPUT_BYTES, use_classifier},
     hooks::{use_entry_keyboard_navigation, use_transient_message},
     ui::{Header, InputPanel, ResultPanel},
@@ -19,6 +19,7 @@ const REPOSITORY_URL: &str = "https://github.com/earth-metabolome-initiative/npc
 const DISTILLATION_DATASET_URL: &str = "https://doi.org/10.5281/zenodo.19701295";
 const MINI_MODEL_TOOLTIP: &str = "Mini: compact distilled NPClassifier variant for routine browser use; usually close to Faithful, but it can differ on individual edge cases, at about 9 MiB in q4.";
 const FAITHFUL_MODEL_TOOLTIP: &str = "Faithful: q4 NPClassifier with the original architecture; larger and slower, but the better choice when you want the closest match to NPClassifier behavior, at about 121 MiB.";
+const WEB_COMMIT: &str = env!("NPCLASSIFIER_GIT_COMMIT");
 
 #[component]
 pub fn App() -> Element {
@@ -38,6 +39,15 @@ pub fn App() -> Element {
     let copy_entries_disabled = !classifier.has_export_entries();
     let state = view.state.clone();
     let active_entry = view.active_entry.clone();
+    let report_issue_href = active_entry.as_ref().map(|entry| {
+        build_prediction_report_url(
+            REPOSITORY_URL,
+            entry,
+            current_model,
+            WEB_COMMIT,
+            current_page_url().as_deref(),
+        )
+    });
     let classifier_for_input = classifier.clone();
     let classifier_for_model_select = classifier.clone();
     let classifier_for_previous = classifier.clone();
@@ -77,6 +87,7 @@ pub fn App() -> Element {
                     entry_count: view.entry_count,
                     active_index: view.active_index,
                     copy_entries_disabled,
+                    report_issue_href,
                     copy_message: copy_message(),
                     on_copy: move |()| {
                         let entries = classifier_for_copy.export_entries();
@@ -103,6 +114,18 @@ pub fn App() -> Element {
             }
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn current_page_url() -> Option<String> {
+    web_sys::window()
+        .and_then(|window| window.location().href().ok())
+        .filter(|url| !url.is_empty())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn current_page_url() -> Option<String> {
+    None
 }
 
 fn default_startup_smiles() -> String {
