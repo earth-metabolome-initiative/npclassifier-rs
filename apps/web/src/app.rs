@@ -4,10 +4,13 @@ use dioxus::prelude::*;
 use npclassifier_core::MockFingerprintRecord;
 
 use crate::{
-    actions::{build_prediction_report_url, copy_entries_as_json, download_entries_as_json},
+    actions::{
+        ExportDetail, ExportFormat, build_prediction_report_url, copy_entries_export,
+        download_entries_export,
+    },
     classifier::{MAX_WEB_INPUT_BYTES, use_classifier},
     hooks::{use_entry_keyboard_navigation, use_transient_message},
-    ui::{Header, InputPanel, ResultPanel},
+    ui::{Header, InputPanel, ResultPanel, ResultTab},
 };
 
 const PLACEHOLDER_SMILES: &str = "CCO\nC1=CC=CC=C1\nCC(=O)OC1=CC=CC=C1C(=O)O";
@@ -25,6 +28,9 @@ const WEB_COMMIT: &str = env!("NPCLASSIFIER_GIT_COMMIT");
 pub fn App() -> Element {
     let classifier = use_classifier(default_startup_smiles);
     let mut copy_message = use_transient_message(COPY_MESSAGE_CLEAR_MS);
+    let mut result_tab = use_signal(|| ResultTab::Classification);
+    let mut export_detail = use_signal(|| ExportDetail::Summary);
+    let mut export_format = use_signal(|| ExportFormat::Csv);
     let view = classifier.view();
     let classifier_for_keyboard_previous = classifier.clone();
     let classifier_for_keyboard_next = classifier.clone();
@@ -36,7 +42,10 @@ pub fn App() -> Element {
 
     let current_input = classifier.current_input();
     let current_model = classifier.current_model();
-    let copy_entries_disabled = !classifier.has_export_entries();
+    let export_entries_disabled = !classifier.has_export_entries();
+    let selected_result_tab = *result_tab.read();
+    let selected_export_detail = *export_detail.read();
+    let selected_export_format = *export_format.read();
     let state = view.state.clone();
     let active_entry = view.active_entry.clone();
     let report_issue_href = active_entry.as_ref().map(|entry| {
@@ -52,8 +61,8 @@ pub fn App() -> Element {
     let classifier_for_model_select = classifier.clone();
     let classifier_for_previous = classifier.clone();
     let classifier_for_next = classifier.clone();
-    let classifier_for_copy = classifier.clone();
-    let classifier_for_download = classifier.clone();
+    let classifier_for_copy_export = classifier.clone();
+    let classifier_for_download_export = classifier.clone();
 
     rsx! {
         main { class: "page",
@@ -86,14 +95,22 @@ pub fn App() -> Element {
                     active_entry,
                     entry_count: view.entry_count,
                     active_index: view.active_index,
-                    copy_entries_disabled,
+                    selected_tab: selected_result_tab,
+                    export_detail: selected_export_detail,
+                    export_format: selected_export_format,
+                    export_entries_disabled,
                     report_issue_href,
                     copy_message: copy_message(),
-                    on_copy: move |()| {
-                        let entries = classifier_for_copy.export_entries();
+                    on_select_tab: move |tab| result_tab.set(tab),
+                    on_select_export_detail: move |detail| export_detail.set(detail),
+                    on_select_export_format: move |format| export_format.set(format),
+                    on_copy_export: move |()| {
+                        let entries = classifier_for_copy_export.export_entries();
+                        let detail = selected_export_detail;
+                        let format = selected_export_format;
                         let mut copy_message = copy_message;
                         spawn(async move {
-                            match copy_entries_as_json(&entries).await {
+                            match copy_entries_export(&entries, detail, format).await {
                                 Ok(message) => copy_message.set(Some(message)),
                                 Err(error) => {
                                     copy_message.set(Some(error));
@@ -101,9 +118,13 @@ pub fn App() -> Element {
                             }
                         });
                     },
-                    on_download: move |()| {
-                        let entries = classifier_for_download.export_entries();
-                        match download_entries_as_json(&entries) {
+                    on_download_export: move |()| {
+                        let entries = classifier_for_download_export.export_entries();
+                        match download_entries_export(
+                            &entries,
+                            selected_export_detail,
+                            selected_export_format,
+                        ) {
                             Ok(message) => copy_message.set(Some(message)),
                             Err(error) => copy_message.set(Some(error)),
                         }

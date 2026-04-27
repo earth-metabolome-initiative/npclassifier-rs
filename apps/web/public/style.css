@@ -308,8 +308,41 @@ button {
 .result-head-copy {
     min-width: 0;
     display: grid;
-    gap: 0.25rem;
+    gap: 0.65rem;
     flex: 1 1 auto;
+}
+
+.result-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: fit-content;
+    padding: 0.22rem;
+    border: 1px solid rgba(20, 34, 41, 0.1);
+    border-radius: 999px;
+    background: rgba(20, 34, 41, 0.04);
+}
+
+.result-tab {
+    min-height: 1.9rem;
+    padding: 0.34rem 0.78rem;
+    border-radius: 999px;
+    color: var(--muted);
+    cursor: pointer;
+    transition:
+        background 140ms ease,
+        color 140ms ease,
+        box-shadow 140ms ease;
+}
+
+.result-tab.is-active {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4px 12px rgba(20, 34, 41, 0.08);
+}
+
+.result-tab:hover:not(.is-active) {
+    color: var(--text);
 }
 
 .result-head-main {
@@ -331,7 +364,6 @@ button {
 }
 
 .meta-pill,
-.copy-button,
 .tone-chip,
 .score-value {
     border-radius: 999px;
@@ -384,50 +416,6 @@ button {
 
 .result-body.is-ready {
     max-height: 64rem;
-}
-
-.copy-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: 2.1rem;
-    height: 2.1rem;
-    padding: 0;
-    color: var(--text);
-    background: transparent;
-    border-color: transparent;
-    cursor: pointer;
-    box-shadow: none;
-    transition:
-        transform 140ms ease,
-        color 140ms ease,
-        opacity 140ms ease;
-}
-
-.result-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    flex-shrink: 0;
-}
-
-.result-actions-divider {
-    color: var(--muted);
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.82rem;
-    line-height: 1;
-}
-
-.copy-button:hover:not(:disabled) {
-    transform: translateY(-1px);
-    color: #205e8c;
-}
-
-.copy-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.45;
-    box-shadow: none;
 }
 
 .result-nav {
@@ -523,6 +511,113 @@ button {
 .report-link:focus-visible {
     outline: 3px solid rgba(32, 94, 140, 0.16);
     outline-offset: 2px;
+}
+
+.export-panel {
+    display: grid;
+    gap: 0.95rem;
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 1.2rem;
+    background: rgba(255, 253, 250, 0.72);
+}
+
+.export-control {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.export-label {
+    margin: 0;
+    color: var(--muted);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.74rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.export-options {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+}
+
+.export-option {
+    display: grid;
+    gap: 0.25rem;
+    min-height: 4rem;
+    padding: 0.75rem 0.8rem;
+    text-align: left;
+    color: var(--muted);
+    border: 1px solid rgba(20, 34, 41, 0.1);
+    border-radius: 0.95rem;
+    background: rgba(20, 34, 41, 0.04);
+    cursor: pointer;
+    transition:
+        border-color 140ms ease,
+        background 140ms ease,
+        color 140ms ease,
+        box-shadow 140ms ease;
+}
+
+.export-option.is-active {
+    color: var(--text);
+    border-color: rgba(20, 34, 41, 0.14);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 4px 12px rgba(20, 34, 41, 0.08);
+}
+
+.export-option:hover:not(.is-active) {
+    color: var(--text);
+    background: rgba(20, 34, 41, 0.06);
+}
+
+.export-option-title {
+    font-weight: 700;
+}
+
+.export-option-copy {
+    line-height: 1.4;
+    font-size: 0.84rem;
+}
+
+.export-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.6rem;
+}
+
+.export-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    min-height: 2.3rem;
+    padding: 0.45rem 0.85rem;
+    color: var(--text);
+    border-radius: 999px;
+    border: 1px solid rgba(20, 34, 41, 0.1);
+    background: rgba(20, 34, 41, 0.05);
+    cursor: pointer;
+    transition:
+        transform 140ms ease,
+        border-color 140ms ease,
+        background 140ms ease,
+        color 140ms ease,
+        opacity 140ms ease;
+}
+
+.export-action:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(20, 34, 41, 0.2);
+    background: rgba(20, 34, 41, 0.08);
+    color: #205e8c;
+}
+
+.export-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
 }
 
 .copy-note,

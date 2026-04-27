@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use npclassifier_core::{WebBatchEntry as BatchEntry, WebModelVariant};
 
+use crate::actions::{ExportDetail, ExportFormat};
 use crate::classifier::{BatchState, LoadingState};
 use crate::presentation::{
     GroupKind, VisibleLabel, WebOverview, format_score, visible_scored_labels,
@@ -43,6 +44,12 @@ enum IconKind {
     Pathway,
     Superclass,
     Class,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ResultTab {
+    Classification,
+    Export,
 }
 
 #[component]
@@ -163,51 +170,55 @@ pub fn ResultPanel(
     active_entry: Option<BatchEntry>,
     entry_count: usize,
     active_index: usize,
-    copy_entries_disabled: bool,
+    selected_tab: ResultTab,
+    export_detail: ExportDetail,
+    export_format: ExportFormat,
+    export_entries_disabled: bool,
     report_issue_href: Option<String>,
     copy_message: Option<String>,
-    on_copy: EventHandler<()>,
-    on_download: EventHandler<()>,
+    on_select_tab: EventHandler<ResultTab>,
+    on_select_export_detail: EventHandler<ExportDetail>,
+    on_select_export_format: EventHandler<ExportFormat>,
+    on_copy_export: EventHandler<()>,
+    on_download_export: EventHandler<()>,
     on_select_previous: EventHandler<()>,
     on_select_next: EventHandler<()>,
 ) -> Element {
+    let classification_tab_class = result_tab_class(selected_tab, ResultTab::Classification);
+    let export_tab_class = result_tab_class(selected_tab, ResultTab::Export);
+    let result_heading = result_heading(selected_tab, active_entry.as_ref());
+    let result_heading_class =
+        if selected_tab == ResultTab::Classification && active_entry.is_some() {
+            "active-smiles"
+        } else {
+            ""
+        };
+
     rsx! {
         section { class: "panel result-panel",
             div { class: "result-head",
                 div { class: "result-head-copy",
-                    p { class: "eyebrow", "Classification" }
-                    div { class: "result-head-main",
-                        if let Some(entry) = active_entry.as_ref() {
-                            h2 {
-                                class: "active-smiles",
-                                title: "{entry.smiles}",
-                                "{entry.smiles}"
-                            }
-                        } else {
-                            h2 { "No SMILES added" }
+                    div { class: "result-tabs", role: "tablist", aria_label: "Result panel tabs",
+                        button {
+                            class: classification_tab_class,
+                            role: "tab",
+                            aria_selected: "{selected_tab == ResultTab::Classification}",
+                            onclick: move |_| on_select_tab.call(ResultTab::Classification),
+                            "Classification"
                         }
-                        div { class: "result-actions",
-                            button {
-                                class: "copy-button",
-                                aria_label: "Copy classification JSON",
-                                title: "Copy classification JSON",
-                                disabled: copy_entries_disabled,
-                                onclick: move |_| on_copy.call(()),
-                                {app_icon(IconKind::Copy)}
-                            }
-                            span {
-                                class: "result-actions-divider",
-                                aria_hidden: "true",
-                                "|"
-                            }
-                            button {
-                                class: "copy-button",
-                                aria_label: "Download classification JSON",
-                                title: "Download classification JSON",
-                                disabled: copy_entries_disabled,
-                                onclick: move |_| on_download.call(()),
-                                {app_icon(IconKind::Download)}
-                            }
+                        button {
+                            class: export_tab_class,
+                            role: "tab",
+                            aria_selected: "{selected_tab == ResultTab::Export}",
+                            onclick: move |_| on_select_tab.call(ResultTab::Export),
+                            "Export"
+                        }
+                    }
+                    div { class: "result-head-main",
+                        h2 {
+                            class: result_heading_class,
+                            title: "{result_heading}",
+                            "{result_heading}"
                         }
                     }
                 }
@@ -217,47 +228,72 @@ pub fn ResultPanel(
                 p { class: "copy-toast", "{message}" }
             }
 
-            div { class: result_body_class(&state, active_entry.as_ref()),
-                {render_result_state(&state, active_entry.as_ref())}
-            }
+            match selected_tab {
+                ResultTab::Classification => rsx! {
+                    div { class: result_body_class(&state, active_entry.as_ref()),
+                        {render_result_state(&state, active_entry.as_ref())}
+                    }
 
-            if entry_count > 1 {
-                div { class: "result-nav",
-                    button {
-                        class: "result-nav-button",
-                        aria_label: "Show previous entry",
-                        title: "Show previous entry",
-                        onclick: move |_| on_select_previous.call(()),
-                        {app_icon(IconKind::ArrowLeft)}
+                    if entry_count > 1 {
+                        div { class: "result-nav",
+                            button {
+                                class: "result-nav-button",
+                                aria_label: "Show previous entry",
+                                title: "Show previous entry",
+                                onclick: move |_| on_select_previous.call(()),
+                                {app_icon(IconKind::ArrowLeft)}
+                            }
+                            p { class: "result-nav-status",
+                                "Showing entry {active_index + 1} of {entry_count}"
+                            }
+                            button {
+                                class: "result-nav-button",
+                                aria_label: "Show next entry",
+                                title: "Show next entry",
+                                onclick: move |_| on_select_next.call(()),
+                                {app_icon(IconKind::ArrowRight)}
+                            }
+                        }
                     }
-                    p { class: "result-nav-status",
-                        "Showing entry {active_index + 1} of {entry_count}"
-                    }
-                    button {
-                        class: "result-nav-button",
-                        aria_label: "Show next entry",
-                        title: "Show next entry",
-                        onclick: move |_| on_select_next.call(()),
-                        {app_icon(IconKind::ArrowRight)}
-                    }
-                }
-            }
 
-            if let Some(report_issue_href) = report_issue_href {
-                div { class: "result-report",
-                    a {
-                        class: "report-link",
-                        href: "{report_issue_href}",
-                        target: "_blank",
-                        rel: "noopener noreferrer",
-                        title: "Report a mistaken prediction on GitHub",
-                        aria_label: "Report this prediction as mistaken on GitHub",
-                        span { class: "report-link-icon", {app_icon(IconKind::Report)} }
-                        span { class: "report-link-text", "Report mistaken prediction" }
+                    if let Some(report_issue_href) = report_issue_href {
+                        div { class: "result-report",
+                            a {
+                                class: "report-link",
+                                href: "{report_issue_href}",
+                                target: "_blank",
+                                rel: "noopener noreferrer",
+                                title: "Report a mistaken prediction on GitHub",
+                                aria_label: "Report this prediction as mistaken on GitHub",
+                                span { class: "report-link-icon", {app_icon(IconKind::Report)} }
+                                span { class: "report-link-text", "Report mistaken prediction" }
+                            }
+                        }
                     }
-                }
+                },
+                ResultTab::Export => rsx! {
+                    {export_panel(
+                        export_detail,
+                        export_format,
+                        export_entries_disabled,
+                        on_select_export_detail,
+                        on_select_export_format,
+                        on_copy_export,
+                        on_download_export,
+                    )}
+                },
             }
         }
+    }
+}
+
+fn result_heading(selected_tab: ResultTab, active_entry: Option<&BatchEntry>) -> String {
+    match selected_tab {
+        ResultTab::Classification => active_entry.map_or_else(
+            || String::from("No SMILES added"),
+            |entry| entry.smiles.clone(),
+        ),
+        ResultTab::Export => String::from("Export classifications"),
     }
 }
 
@@ -278,6 +314,120 @@ fn app_icon(icon: IconKind) -> Element {
         IconKind::Pathway => pathway_icon(),
         IconKind::Superclass => superclass_icon(),
         IconKind::Class => class_icon(),
+    }
+}
+
+fn result_tab_class(selected: ResultTab, tab: ResultTab) -> &'static str {
+    if selected == tab {
+        "result-tab is-active"
+    } else {
+        "result-tab"
+    }
+}
+
+fn export_option_class(is_active: bool) -> &'static str {
+    if is_active {
+        "export-option is-active"
+    } else {
+        "export-option"
+    }
+}
+
+fn export_panel(
+    export_detail: ExportDetail,
+    export_format: ExportFormat,
+    export_entries_disabled: bool,
+    on_select_export_detail: EventHandler<ExportDetail>,
+    on_select_export_format: EventHandler<ExportFormat>,
+    on_copy_export: EventHandler<()>,
+    on_download_export: EventHandler<()>,
+) -> Element {
+    rsx! {
+        div { class: "export-panel",
+            p { class: "panel-copy",
+                "Choose how much detail to export, then copy the table or download it as a file. Failed entries are omitted."
+            }
+
+            div { class: "export-control",
+                p { class: "export-label", "Detail" }
+                div { class: "export-options",
+                    {export_detail_option(
+                        ExportDetail::Summary,
+                        export_detail,
+                        on_select_export_detail,
+                    )}
+                    {export_detail_option(
+                        ExportDetail::Complete,
+                        export_detail,
+                        on_select_export_detail,
+                    )}
+                }
+            }
+
+            div { class: "export-control",
+                p { class: "export-label", "Format" }
+                div { class: "export-options",
+                    {export_format_option(ExportFormat::Csv, export_format, on_select_export_format)}
+                    {export_format_option(ExportFormat::Tsv, export_format, on_select_export_format)}
+                    {export_format_option(ExportFormat::Json, export_format, on_select_export_format)}
+                }
+            }
+
+            if export_entries_disabled {
+                p { class: "copy-note",
+                    "No successful classifications are available to export."
+                }
+            }
+
+            div { class: "export-actions",
+                button {
+                    class: "export-action",
+                    disabled: export_entries_disabled,
+                    onclick: move |_| on_copy_export.call(()),
+                    {app_icon(IconKind::Copy)}
+                    span { "Copy" }
+                }
+                button {
+                    class: "export-action",
+                    disabled: export_entries_disabled,
+                    onclick: move |_| on_download_export.call(()),
+                    {app_icon(IconKind::Download)}
+                    span { "Download" }
+                }
+            }
+        }
+    }
+}
+
+fn export_detail_option(
+    detail: ExportDetail,
+    selected_detail: ExportDetail,
+    on_select_export_detail: EventHandler<ExportDetail>,
+) -> Element {
+    rsx! {
+        button {
+            class: export_option_class(detail == selected_detail),
+            aria_pressed: "{detail == selected_detail}",
+            onclick: move |_| on_select_export_detail.call(detail),
+            span { class: "export-option-title", "{detail.label()}" }
+            span { class: "export-option-copy", "{detail.description()}" }
+        }
+    }
+}
+
+fn export_format_option(
+    format: ExportFormat,
+    selected_format: ExportFormat,
+    on_select_export_format: EventHandler<ExportFormat>,
+) -> Element {
+    rsx! {
+        button {
+            class: export_option_class(format == selected_format),
+            aria_pressed: "{format == selected_format}",
+            onclick: move |_| on_select_export_format.call(format),
+            span { class: "export-option-title", "{format.label()}" }
+            span { class: "export-option-copy", "{format.description()}" }
+        }
     }
 }
 

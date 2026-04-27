@@ -12,46 +12,119 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{Blob, BlobPropertyBag, HtmlAnchorElement, Url};
 
 #[derive(Serialize)]
-struct CopiedBatchEntry {
+struct ExportRow {
+    entry_index: usize,
     smiles: String,
-    error: Option<String>,
-    predicted: CopiedPredictions,
-    pathways: Vec<CopiedScore>,
-    superclasses: Vec<CopiedScore>,
-    classes: Vec<CopiedScore>,
-}
-
-#[derive(Serialize)]
-struct CopiedPredictions {
-    pathways: Vec<String>,
-    superclasses: Vec<String>,
-    classes: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct CopiedScore {
-    name: String,
+    layer: &'static str,
+    rank: usize,
+    label: String,
     score: f32,
+    selected: bool,
 }
 
-pub fn build_copy_json(entries: &[BatchEntry]) -> Result<String, serde_json::Error> {
-    let copied = entries
-        .iter()
-        .map(|entry| CopiedBatchEntry {
-            smiles: entry.smiles.clone(),
-            error: entry.error.clone(),
-            predicted: CopiedPredictions {
-                pathways: entry.labels.pathways.clone(),
-                superclasses: entry.labels.superclasses.clone(),
-                classes: entry.labels.classes.clone(),
-            },
-            pathways: copy_scores(&entry.pathway_scores),
-            superclasses: copy_scores(&entry.superclass_scores),
-            classes: copy_scores(&entry.class_scores),
-        })
-        .collect::<Vec<_>>();
+pub struct BuiltExport {
+    pub text: String,
+    pub row_count: usize,
+    pub entry_count: usize,
+}
 
-    serde_json::to_string(&copied)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportDetail {
+    Summary,
+    Complete,
+}
+
+impl ExportDetail {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Summary => "Summary",
+            Self::Complete => "Complete scores",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Summary => "Final selected classifications only.",
+            Self::Complete => "All scores, with selected rows marked.",
+        }
+    }
+
+    const fn slug(self) -> &'static str {
+        match self {
+            Self::Summary => "summary",
+            Self::Complete => "complete",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExportFormat {
+    Csv,
+    Tsv,
+    Json,
+}
+
+impl ExportFormat {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Csv => "Spreadsheet (.csv)",
+            Self::Tsv => "TSV",
+            Self::Json => "JSON",
+        }
+    }
+
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::Csv => "Best for Excel and Google Sheets.",
+            Self::Tsv => "Plain tab-separated rows.",
+            Self::Json => "JSON rows for scripts.",
+        }
+    }
+
+    const fn extension(self) -> &'static str {
+        match self {
+            Self::Csv => "csv",
+            Self::Tsv => "tsv",
+            Self::Json => "json",
+        }
+    }
+
+    const fn content_type(self) -> &'static str {
+        match self {
+            Self::Csv => "text/csv;charset=utf-8",
+            Self::Tsv => "text/tab-separated-values;charset=utf-8",
+            Self::Json => "application/json;charset=utf-8",
+        }
+    }
+
+    const fn short_label(self) -> &'static str {
+        match self {
+            Self::Csv => "CSV",
+            Self::Tsv => "TSV",
+            Self::Json => "JSON",
+        }
+    }
+}
+
+pub fn build_export(
+    entries: &[BatchEntry],
+    detail: ExportDetail,
+    format: ExportFormat,
+) -> Result<BuiltExport, serde_json::Error> {
+    let entry_count = entries.iter().filter(|entry| entry.error.is_none()).count();
+    let rows = export_rows(entries, detail);
+    let row_count = rows.len();
+    let text = match format {
+        ExportFormat::Json => serde_json::to_string(&rows)?,
+        ExportFormat::Csv => format_delimited_rows(&rows, ','),
+        ExportFormat::Tsv => format_delimited_rows(&rows, '\t'),
+    };
+
+    Ok(BuiltExport {
+        text,
+        row_count,
+        entry_count,
+    })
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(clippy::unused_async))]
@@ -74,40 +147,53 @@ pub async fn copy_text_to_clipboard(text: String) -> Result<(), String> {
     }
 }
 
-pub async fn copy_entries_as_json(entries: &[BatchEntry]) -> Result<String, String> {
-    let json =
-        build_copy_json(entries).map_err(|error| format!("Could not serialize JSON: {error}"))?;
-    copy_text_to_clipboard(json).await?;
+pub async fn copy_entries_export(
+    entries: &[BatchEntry],
+    detail: ExportDetail,
+    format: ExportFormat,
+) -> Result<String, String> {
+    let export = build_export(entries, detail, format)
+        .map_err(|error| format!("Could not export: {error}"))?;
+    let message = format_export_message("Copied", detail, format, &export);
+    copy_text_to_clipboard(export.text).await?;
 
-    Ok(if entries.len() == 1 {
-        String::from("Copied 1 classification as JSON.")
-    } else {
-        format!("Copied {} classifications as JSON.", entries.len())
-    })
+    Ok(message)
 }
 
-pub fn download_filename(entries: &[BatchEntry]) -> String {
-    if let [entry] = entries {
+pub fn download_filename(
+    entries: &[BatchEntry],
+    detail: ExportDetail,
+    format: ExportFormat,
+) -> String {
+    let exportable_entries = entries
+        .iter()
+        .filter(|entry| entry.error.is_none())
+        .collect::<Vec<_>>();
+    if let [entry] = exportable_entries.as_slice() {
         return format!(
-            "npclassifier-entry-{}.json",
-            short_smiles_hash(&entry.smiles)
+            "npclassifier-{}-entry-{}.{}",
+            detail.slug(),
+            short_smiles_hash(&entry.smiles),
+            format.extension()
         );
     }
 
-    let batch_key = entries
+    let batch_key = exportable_entries
         .iter()
         .map(|entry| entry.smiles.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "npclassifier-batch-{}-{}.json",
-        entries.len(),
-        short_smiles_hash(&batch_key)
+        "npclassifier-{}-batch-{}-{}.{}",
+        detail.slug(),
+        exportable_entries.len(),
+        short_smiles_hash(&batch_key),
+        format.extension()
     )
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(clippy::unnecessary_wraps))]
-pub fn download_json_file(filename: &str, text: &str) -> Result<(), String> {
+pub fn download_text_file(filename: &str, text: &str, content_type: &str) -> Result<(), String> {
     #[cfg(target_arch = "wasm32")]
     {
         let window = web_sys::window().ok_or_else(|| String::from("window is not available"))?;
@@ -119,7 +205,7 @@ pub fn download_json_file(filename: &str, text: &str) -> Result<(), String> {
         parts.push(&JsValue::from_str(text));
 
         let options = BlobPropertyBag::new();
-        options.set_type("application/json");
+        options.set_type(content_type);
         let blob = Blob::new_with_str_sequence_and_options(&parts, &options)
             .map_err(|error| js_error_text(&error))?;
         let object_url =
@@ -139,26 +225,23 @@ pub fn download_json_file(filename: &str, text: &str) -> Result<(), String> {
 
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = (filename, text);
+        let _ = (filename, text, content_type);
         Ok(())
     }
 }
 
-pub fn download_entries_as_json(entries: &[BatchEntry]) -> Result<String, String> {
-    let json =
-        build_copy_json(entries).map_err(|error| format!("Could not serialize JSON: {error}"))?;
-    let filename = download_filename(entries);
-    download_json_file(&filename, &json)
-        .map_err(|error| format!("Could not download JSON: {error}"))?;
+pub fn download_entries_export(
+    entries: &[BatchEntry],
+    detail: ExportDetail,
+    format: ExportFormat,
+) -> Result<String, String> {
+    let export = build_export(entries, detail, format)
+        .map_err(|error| format!("Could not export: {error}"))?;
+    let filename = download_filename(entries, detail, format);
+    download_text_file(&filename, &export.text, format.content_type())
+        .map_err(|error| format!("Could not download export: {error}"))?;
 
-    Ok(if entries.len() == 1 {
-        format!("Downloaded JSON as {filename}.")
-    } else {
-        format!(
-            "Downloaded {} classifications as {filename}.",
-            entries.len()
-        )
-    })
+    Ok(format_export_message("Downloaded", detail, format, &export))
 }
 
 const PREDICTION_REPORT_TEMPLATE: &str = "mistaken-prediction.yml";
@@ -350,14 +433,164 @@ fn percent_encode(value: &str) -> String {
     encoded
 }
 
-fn copy_scores(scores: &[ScoredLabel]) -> Vec<CopiedScore> {
-    scores
+fn export_rows(entries: &[BatchEntry], detail: ExportDetail) -> Vec<ExportRow> {
+    entries
         .iter()
-        .map(|score| CopiedScore {
-            name: score.name.clone(),
+        .enumerate()
+        .filter(|(_, entry)| entry.error.is_none())
+        .flat_map(|(index, entry)| entry_export_rows(index + 1, entry, detail))
+        .collect()
+}
+
+fn entry_export_rows(
+    entry_index: usize,
+    entry: &BatchEntry,
+    detail: ExportDetail,
+) -> Vec<ExportRow> {
+    let mut rows = Vec::new();
+    append_layer_rows(
+        &mut rows,
+        entry_index,
+        &entry.smiles,
+        "pathway",
+        &entry.labels.pathways,
+        &entry.pathway_scores,
+        detail,
+    );
+    append_layer_rows(
+        &mut rows,
+        entry_index,
+        &entry.smiles,
+        "superclass",
+        &entry.labels.superclasses,
+        &entry.superclass_scores,
+        detail,
+    );
+    append_layer_rows(
+        &mut rows,
+        entry_index,
+        &entry.smiles,
+        "class",
+        &entry.labels.classes,
+        &entry.class_scores,
+        detail,
+    );
+    rows
+}
+
+fn append_layer_rows(
+    rows: &mut Vec<ExportRow>,
+    entry_index: usize,
+    smiles: &str,
+    layer: &'static str,
+    selected_labels: &[String],
+    scores: &[ScoredLabel],
+    detail: ExportDetail,
+) {
+    let mut ranked_scores = scores.iter().collect::<Vec<_>>();
+    ranked_scores.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then_with(|| left.index.cmp(&right.index))
+    });
+
+    for (rank_index, score) in ranked_scores.into_iter().enumerate() {
+        let selected = selected_labels
+            .iter()
+            .any(|selected_label| selected_label == &score.name);
+        if detail == ExportDetail::Summary && !selected {
+            continue;
+        }
+
+        rows.push(ExportRow {
+            entry_index,
+            smiles: smiles.to_owned(),
+            layer,
+            rank: rank_index + 1,
+            label: score.name.clone(),
             score: score.score,
+            selected,
+        });
+    }
+}
+
+fn format_delimited_rows(rows: &[ExportRow], delimiter: char) -> String {
+    let mut table = String::from("entry_index,smiles,layer,rank,label,score,selected\n");
+    if delimiter == '\t' {
+        table = table.replace(',', "\t");
+    }
+
+    for row in rows {
+        write_delimited_field(&mut table, delimiter, &row.entry_index.to_string());
+        table.push(delimiter);
+        write_delimited_field(&mut table, delimiter, &row.smiles);
+        table.push(delimiter);
+        write_delimited_field(&mut table, delimiter, row.layer);
+        table.push(delimiter);
+        write_delimited_field(&mut table, delimiter, &row.rank.to_string());
+        table.push(delimiter);
+        write_delimited_field(&mut table, delimiter, &row.label);
+        table.push(delimiter);
+        write_delimited_field(&mut table, delimiter, &format!("{:.6}", row.score));
+        table.push(delimiter);
+        write_delimited_field(
+            &mut table,
+            delimiter,
+            if row.selected { "true" } else { "false" },
+        );
+        table.push('\n');
+    }
+    table
+}
+
+fn write_delimited_field(output: &mut String, delimiter: char, field: &str) {
+    if delimiter == ',' {
+        write_csv_field(output, field);
+    } else {
+        output.push_str(&sanitize_tsv_field(field));
+    }
+}
+
+fn write_csv_field(output: &mut String, field: &str) {
+    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
+        output.push('"');
+        output.push_str(&field.replace('"', "\"\""));
+        output.push('"');
+    } else {
+        output.push_str(field);
+    }
+}
+
+fn sanitize_tsv_field(field: &str) -> String {
+    field
+        .chars()
+        .map(|character| match character {
+            '\t' | '\n' | '\r' => ' ',
+            _ => character,
         })
         .collect()
+}
+
+fn format_export_message(
+    verb: &str,
+    detail: ExportDetail,
+    format: ExportFormat,
+    export: &BuiltExport,
+) -> String {
+    format!(
+        "{verb} {} {} export: {} row{} from {} classification{}.",
+        detail.slug(),
+        format.short_label(),
+        export.row_count,
+        plural_suffix(export.row_count),
+        export.entry_count,
+        plural_suffix(export.entry_count)
+    )
+}
+
+const fn plural_suffix(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
 }
 
 fn short_smiles_hash(text: &str) -> String {
@@ -389,42 +622,163 @@ mod tests {
     };
 
     use super::{
-        MAX_REPORT_URL_BYTES, build_copy_json, build_prediction_report_url, download_filename,
+        BuiltExport, ExportDetail, ExportFormat, MAX_REPORT_URL_BYTES, build_export,
+        build_prediction_report_url, download_filename, format_export_message,
     };
 
     #[test]
-    fn build_copy_json_contains_named_vectors() {
-        let entries = vec![BatchEntry {
-            smiles: "CCO".to_owned(),
-            error: None,
-            labels: PredictionLabels::new(
-                vec!["Fatty acids".to_owned()],
-                vec!["Fatty acyls".to_owned()],
-                vec!["Fatty alcohols".to_owned()],
-                Some(false),
-            ),
-            pathway_scores: vec![ScoredLabel {
-                index: 0,
-                name: "Fatty acids".to_owned(),
-                score: 0.91,
-            }],
-            superclass_scores: vec![ScoredLabel {
-                index: 0,
-                name: "Fatty acyls".to_owned(),
-                score: 0.82,
-            }],
-            class_scores: vec![ScoredLabel {
-                index: 0,
-                name: "Fatty alcohols".to_owned(),
-                score: 0.73,
-            }],
-        }];
-        let copied = build_copy_json(&entries).expect("copy json should serialize");
+    fn summary_export_filters_to_selected_rows_and_omits_errors() {
+        let entries = sample_entries();
+        let exported = build_export(&entries, ExportDetail::Summary, ExportFormat::Csv)
+            .expect("summary csv should export");
 
-        assert!(copied.contains("\"pathways\""));
-        assert!(copied.contains("\"superclasses\""));
-        assert!(copied.contains("\"classes\""));
-        assert!(copied.contains("\"score\""));
+        assert_eq!(exported.entry_count, 1);
+        assert_eq!(exported.row_count, 3);
+        assert!(
+            exported
+                .text
+                .starts_with("entry_index,smiles,layer,rank,label,score,selected\n")
+        );
+        assert!(
+            exported
+                .text
+                .contains("1,CCO,pathway,1,Fatty acids,0.910000,true")
+        );
+        assert!(
+            exported
+                .text
+                .contains("1,CCO,class,1,\"Fatty alcohols, oxidized\",0.730000,true")
+        );
+        assert!(!exported.text.contains("Shikimates"));
+        assert!(!exported.text.contains("invalid"));
+        assert!(!exported.text.contains("error"));
+    }
+
+    #[test]
+    fn complete_export_uses_same_rows_with_unselected_scores() {
+        let entries = sample_entries();
+        let exported = build_export(&entries, ExportDetail::Complete, ExportFormat::Tsv)
+            .expect("complete tsv should export");
+
+        assert_eq!(exported.entry_count, 1);
+        assert_eq!(exported.row_count, 6);
+        assert!(
+            exported
+                .text
+                .starts_with("entry_index\tsmiles\tlayer\trank\tlabel\tscore\tselected\n")
+        );
+        assert!(
+            exported
+                .text
+                .contains("1\tCCO\tpathway\t1\tFatty acids\t0.910000\ttrue")
+        );
+        assert!(
+            exported
+                .text
+                .contains("1\tCCO\tpathway\t2\tShikimates\t0.420000\tfalse")
+        );
+        assert!(!exported.text.contains("invalid"));
+        assert!(!exported.text.contains("error"));
+    }
+
+    #[test]
+    fn json_export_uses_the_same_row_schema() {
+        let entries = sample_entries();
+        let exported = build_export(&entries, ExportDetail::Summary, ExportFormat::Json)
+            .expect("summary json should export");
+
+        assert_eq!(exported.row_count, 3);
+        assert!(exported.text.contains("\"entry_index\":1"));
+        assert!(exported.text.contains("\"layer\":\"pathway\""));
+        assert!(exported.text.contains("\"selected\":true"));
+        assert!(!exported.text.contains("\"error\""));
+    }
+
+    #[test]
+    fn export_messages_pluralize_counts() {
+        let single = BuiltExport {
+            text: String::new(),
+            row_count: 1,
+            entry_count: 1,
+        };
+        let batch = BuiltExport {
+            text: String::new(),
+            row_count: 6,
+            entry_count: 2,
+        };
+
+        assert_eq!(
+            format_export_message("Copied", ExportDetail::Summary, ExportFormat::Csv, &single),
+            "Copied summary CSV export: 1 row from 1 classification."
+        );
+        assert_eq!(
+            format_export_message(
+                "Downloaded",
+                ExportDetail::Complete,
+                ExportFormat::Json,
+                &batch
+            ),
+            "Downloaded complete JSON export: 6 rows from 2 classifications."
+        );
+    }
+
+    fn sample_entries() -> Vec<BatchEntry> {
+        vec![
+            BatchEntry {
+                smiles: "CCO".to_owned(),
+                error: None,
+                labels: PredictionLabels::new(
+                    vec!["Fatty acids".to_owned()],
+                    vec!["Fatty acyls".to_owned()],
+                    vec!["Fatty alcohols, oxidized".to_owned()],
+                    Some(false),
+                ),
+                pathway_scores: vec![
+                    ScoredLabel {
+                        index: 0,
+                        name: "Fatty acids".to_owned(),
+                        score: 0.91,
+                    },
+                    ScoredLabel {
+                        index: 1,
+                        name: "Shikimates".to_owned(),
+                        score: 0.42,
+                    },
+                ],
+                superclass_scores: vec![
+                    ScoredLabel {
+                        index: 0,
+                        name: "Fatty acyls".to_owned(),
+                        score: 0.82,
+                    },
+                    ScoredLabel {
+                        index: 1,
+                        name: "Alkaloids".to_owned(),
+                        score: 0.31,
+                    },
+                ],
+                class_scores: vec![
+                    ScoredLabel {
+                        index: 0,
+                        name: "Fatty alcohols, oxidized".to_owned(),
+                        score: 0.73,
+                    },
+                    ScoredLabel {
+                        index: 1,
+                        name: "Aminoacids".to_owned(),
+                        score: 0.22,
+                    },
+                ],
+            },
+            BatchEntry {
+                smiles: "invalid".to_owned(),
+                error: Some("parse error".to_owned()),
+                labels: PredictionLabels::new(Vec::new(), Vec::new(), Vec::new(), None),
+                pathway_scores: Vec::new(),
+                superclass_scores: Vec::new(),
+                class_scores: Vec::new(),
+            },
+        ]
     }
 
     #[test]
@@ -456,22 +810,28 @@ mod tests {
             },
         ];
 
-        let single_name = download_filename(&single);
-        let batch_name = download_filename(&batch);
+        let single_name = download_filename(&single, ExportDetail::Summary, ExportFormat::Csv);
+        let batch_name = download_filename(&batch, ExportDetail::Complete, ExportFormat::Json);
 
-        assert_eq!(single_name, download_filename(&single));
-        assert_eq!(batch_name, download_filename(&batch));
-        assert!(single_name.starts_with("npclassifier-entry-"));
-        assert!(has_json_extension(&single_name));
-        assert!(batch_name.starts_with("npclassifier-batch-2-"));
+        assert_eq!(
+            single_name,
+            download_filename(&single, ExportDetail::Summary, ExportFormat::Csv)
+        );
+        assert_eq!(
+            batch_name,
+            download_filename(&batch, ExportDetail::Complete, ExportFormat::Json)
+        );
+        assert!(single_name.starts_with("npclassifier-summary-entry-"));
+        assert!(has_extension(&single_name, "csv"));
+        assert!(batch_name.starts_with("npclassifier-complete-batch-2-"));
         assert!(has_json_extension(&batch_name));
         assert_ne!(single_name, batch_name);
 
         let single_hash = single_name
-            .trim_start_matches("npclassifier-entry-")
-            .trim_end_matches(".json");
+            .trim_start_matches("npclassifier-summary-entry-")
+            .trim_end_matches(".csv");
         let batch_hash = batch_name
-            .trim_start_matches("npclassifier-batch-2-")
+            .trim_start_matches("npclassifier-complete-batch-2-")
             .trim_end_matches(".json");
         assert_eq!(single_hash.len(), 6);
         assert_eq!(batch_hash.len(), 6);
@@ -559,8 +919,12 @@ mod tests {
     }
 
     fn has_json_extension(filename: &str) -> bool {
+        has_extension(filename, "json")
+    }
+
+    fn has_extension(filename: &str, expected: &str) -> bool {
         Path::new(filename)
             .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+            .is_some_and(|extension| extension.eq_ignore_ascii_case(expected))
     }
 }

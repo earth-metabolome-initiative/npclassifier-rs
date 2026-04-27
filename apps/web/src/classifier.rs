@@ -167,7 +167,10 @@ impl ClassifierHandle {
     }
 
     pub fn has_export_entries(&self) -> bool {
-        matches!(&*self.runtime.batch_state.read(), BatchState::Ready(batch) if batch.len() > 0)
+        matches!(
+            &*self.runtime.batch_state.read(),
+            BatchState::Ready(batch) if batch.entries().iter().any(|entry| entry.error.is_none())
+        )
     }
 
     pub fn handle_input(&self, value: &str) {
