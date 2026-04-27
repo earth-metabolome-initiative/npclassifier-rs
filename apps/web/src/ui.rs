@@ -482,7 +482,6 @@ fn render_labeled_result(entry: &BatchEntry) -> Element {
 
     rsx! {
         {label_group(
-            "Pathways",
             IconKind::Pathway,
             &visible_pathways,
             GroupKind::Pathway,
@@ -490,7 +489,6 @@ fn render_labeled_result(entry: &BatchEntry) -> Element {
         )}
         if !entry.labels.superclasses.is_empty() {
             {label_group(
-                "Superclasses",
                 IconKind::Superclass,
                 &visible_superclasses,
                 GroupKind::Superclass,
@@ -499,7 +497,6 @@ fn render_labeled_result(entry: &BatchEntry) -> Element {
         }
         if !entry.labels.classes.is_empty() {
             {label_group(
-                "Classes",
                 IconKind::Class,
                 &visible_classes,
                 GroupKind::Class,
@@ -551,12 +548,12 @@ fn format_eta(total_seconds: u64) -> String {
 }
 
 fn label_group(
-    title: &str,
     icon_class: IconKind,
     labels: &[VisibleLabel],
     group_kind: GroupKind,
     overview: &WebOverview,
 ) -> Element {
+    let title = group_title(group_kind, labels.len());
     rsx! {
         section { class: "section-card",
             div { class: "section-head",
@@ -587,6 +584,17 @@ fn label_group(
     }
 }
 
+fn group_title(group_kind: GroupKind, visible_label_count: usize) -> &'static str {
+    match (group_kind, visible_label_count == 1) {
+        (GroupKind::Pathway, true) => "Pathway",
+        (GroupKind::Pathway, false) => "Pathways",
+        (GroupKind::Superclass, true) => "Superclass",
+        (GroupKind::Superclass, false) => "Superclasses",
+        (GroupKind::Class, true) => "Class",
+        (GroupKind::Class, false) => "Classes",
+    }
+}
+
 fn model_toggle_icon(model: WebModelVariant) -> IconKind {
     match model {
         WebModelVariant::MiniShared => IconKind::Mini,
@@ -598,7 +606,8 @@ fn model_toggle_icon(model: WebModelVariant) -> IconKind {
 mod tests {
     use npclassifier_core::{FingerprintGenerator, PredictionLabels, WebBatchEntry};
 
-    use super::{entry_has_no_labels, format_eta};
+    use super::{entry_has_no_labels, format_eta, group_title};
+    use crate::presentation::GroupKind;
 
     #[test]
     fn counted_morgan_rejects_invalid_smiles() {
@@ -627,5 +636,16 @@ mod tests {
         assert_eq!(format_eta(42), "42s");
         assert_eq!(format_eta(125), "2m 05s");
         assert_eq!(format_eta(3_726), "1h 02m");
+    }
+
+    #[test]
+    fn group_titles_match_visible_label_count() {
+        assert_eq!(group_title(GroupKind::Pathway, 0), "Pathways");
+        assert_eq!(group_title(GroupKind::Pathway, 1), "Pathway");
+        assert_eq!(group_title(GroupKind::Pathway, 2), "Pathways");
+        assert_eq!(group_title(GroupKind::Superclass, 1), "Superclass");
+        assert_eq!(group_title(GroupKind::Superclass, 2), "Superclasses");
+        assert_eq!(group_title(GroupKind::Class, 1), "Class");
+        assert_eq!(group_title(GroupKind::Class, 2), "Classes");
     }
 }
