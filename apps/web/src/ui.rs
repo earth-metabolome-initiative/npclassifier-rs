@@ -3,6 +3,7 @@ use npclassifier_core::{WebBatchEntry as BatchEntry, WebModelVariant};
 
 use crate::actions::{ExportDetail, ExportFormat};
 use crate::classifier::{BatchState, LoadingState};
+use crate::hooks::TransientMessage;
 use crate::presentation::{
     GroupKind, VisibleLabel, WebOverview, format_score, visible_scored_labels,
 };
@@ -179,7 +180,7 @@ pub fn ResultPanel(
     export_format: ExportFormat,
     export_entries_disabled: bool,
     report_issue_href: Option<String>,
-    copy_message: Option<String>,
+    copy_message: Option<TransientMessage>,
     on_select_tab: EventHandler<ResultTab>,
     on_select_export_detail: EventHandler<ExportDetail>,
     on_select_export_format: EventHandler<ExportFormat>,
@@ -289,7 +290,12 @@ pub fn ResultPanel(
             if selected_tab == ResultTab::Export {
                 if let Some(message) = copy_message {
                     div { class: "copy-feedback",
-                        p { class: "copy-toast", aria_live: "polite", "{message}" }
+                        p {
+                            key: "{message.id}",
+                            class: "copy-toast",
+                            aria_live: "polite",
+                            "{message.text}"
+                        }
                     }
                 }
             }

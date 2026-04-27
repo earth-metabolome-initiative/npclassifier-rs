@@ -27,7 +27,7 @@ const WEB_COMMIT: &str = env!("NPCLASSIFIER_GIT_COMMIT");
 #[component]
 pub fn App() -> Element {
     let classifier = use_classifier(default_startup_smiles);
-    let mut copy_message = use_transient_message(COPY_MESSAGE_CLEAR_MS);
+    let copy_message = use_transient_message(COPY_MESSAGE_CLEAR_MS);
     let mut result_tab = use_signal(|| ResultTab::Classification);
     let mut export_detail = use_signal(|| ExportDetail::Summary);
     let mut export_format = use_signal(|| ExportFormat::Csv);
@@ -82,11 +82,11 @@ pub fn App() -> Element {
                     faithful_tooltip: FAITHFUL_MODEL_TOOLTIP,
                     on_input: move |value: String| {
                         classifier_for_input.handle_input(&value);
-                        copy_message.set(None);
+                        copy_message.clear();
                     },
                     on_select_model: move |model| {
                         classifier_for_model_select.select_model(model);
-                        copy_message.set(None);
+                        copy_message.clear();
                     },
                 }
 
@@ -100,7 +100,7 @@ pub fn App() -> Element {
                     export_format: selected_export_format,
                     export_entries_disabled,
                     report_issue_href,
-                    copy_message: copy_message(),
+                    copy_message: copy_message.current(),
                     on_select_tab: move |tab| result_tab.set(tab),
                     on_select_export_detail: move |detail| export_detail.set(detail),
                     on_select_export_format: move |format| export_format.set(format),
@@ -108,12 +108,12 @@ pub fn App() -> Element {
                         let entries = classifier_for_copy_export.export_entries();
                         let detail = selected_export_detail;
                         let format = selected_export_format;
-                        let mut copy_message = copy_message;
+                        let copy_message = copy_message;
                         spawn(async move {
                             match copy_entries_export(&entries, detail, format).await {
-                                Ok(message) => copy_message.set(Some(message)),
+                                Ok(message) => copy_message.show(message),
                                 Err(error) => {
-                                    copy_message.set(Some(error));
+                                    copy_message.show(error);
                                 }
                             }
                         });
@@ -125,8 +125,8 @@ pub fn App() -> Element {
                             selected_export_detail,
                             selected_export_format,
                         ) {
-                            Ok(message) => copy_message.set(Some(message)),
-                            Err(error) => copy_message.set(Some(error)),
+                            Ok(message) => copy_message.show(message),
+                            Err(error) => copy_message.show(error),
                         }
                     },
                     on_select_previous: move |()| classifier_for_previous.select_previous(),

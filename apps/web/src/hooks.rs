@@ -8,16 +8,46 @@ use wasm_bindgen::{JsCast, closure::Closure};
 #[cfg(target_arch = "wasm32")]
 use web_sys::{HtmlTextAreaElement, KeyboardEvent};
 
-pub fn use_transient_message(clear_ms: i32) -> Signal<Option<String>> {
-    let message = use_signal(|| None::<String>);
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TransientMessage {
+    pub id: u64,
+    pub text: String,
+}
+
+#[derive(Clone, Copy)]
+pub struct TransientMessageHandle {
+    message: Signal<Option<TransientMessage>>,
+    next_id: Signal<u64>,
+}
+
+impl TransientMessageHandle {
+    pub fn current(self) -> Option<TransientMessage> {
+        (self.message)()
+    }
+
+    pub fn clear(mut self) {
+        self.message.set(None);
+    }
+
+    pub fn show(mut self, text: String) {
+        let next_id = (self.next_id)().wrapping_add(1);
+        self.next_id.set(next_id);
+        self.message
+            .set(Some(TransientMessage { id: next_id, text }));
+    }
+}
+
+pub fn use_transient_message(clear_ms: i32) -> TransientMessageHandle {
+    let message = use_signal(|| None::<TransientMessage>);
+    let next_id = use_signal(|| 0_u64);
     let timeout_id = use_hook(|| Rc::new(Cell::new(None::<i32>)));
 
     {
         let message_signal = message;
         let timeout_id = timeout_id.clone();
-        let value = message();
         use_effect(move || {
-            schedule_message_clear(value.as_deref(), message_signal, &timeout_id, clear_ms);
+            let has_message = message_signal.read().is_some();
+            schedule_message_clear(has_message, message_signal, &timeout_id, clear_ms);
         });
     }
 
@@ -26,7 +56,7 @@ pub fn use_transient_message(clear_ms: i32) -> Signal<Option<String>> {
         dioxus::core::use_drop(move || clear_message_timeout(&timeout_id));
     }
 
-    message
+    TransientMessageHandle { message, next_id }
 }
 
 pub fn use_entry_keyboard_navigation(
@@ -125,13 +155,13 @@ pub fn use_entry_keyboard_navigation(
 
 #[cfg(target_arch = "wasm32")]
 fn schedule_message_clear(
-    message: Option<&str>,
-    mut message_signal: Signal<Option<String>>,
+    has_message: bool,
+    mut message_signal: Signal<Option<TransientMessage>>,
     timeout_id: &Rc<Cell<Option<i32>>>,
     clear_ms: i32,
 ) {
     clear_message_timeout(timeout_id);
-    if message.is_none() {
+    if !has_message {
         return;
     }
 
@@ -152,8 +182,8 @@ fn schedule_message_clear(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn schedule_message_clear(
-    _message: Option<&str>,
-    _message_signal: Signal<Option<String>>,
+    _has_message: bool,
+    _message_signal: Signal<Option<TransientMessage>>,
     timeout_id: &Rc<Cell<Option<i32>>>,
     _clear_ms: i32,
 ) {
