@@ -254,7 +254,8 @@ button {
     box-shadow: 0 0 0 4px rgba(23, 112, 168, 0.08);
 }
 
-.model-toggle {
+.model-toggle,
+.result-tabs {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -264,7 +265,8 @@ button {
     background: rgba(20, 34, 41, 0.04);
 }
 
-.model-toggle-button {
+.model-toggle-button,
+.result-tab {
     display: inline-flex;
     align-items: center;
     gap: 0.45rem;
@@ -272,6 +274,10 @@ button {
     padding: 0.38rem 0.8rem;
     border-radius: 999px;
     color: var(--muted);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     cursor: pointer;
     transition:
         background 140ms ease,
@@ -279,11 +285,13 @@ button {
         box-shadow 140ms ease;
 }
 
-.model-toggle-button .app-icon {
+.model-toggle-button .app-icon,
+.result-tab .app-icon {
     font-size: 0.84em;
 }
 
-.model-toggle-button.is-active {
+.model-toggle-button.is-active,
+.result-tab.is-active {
     color: var(--text);
     background: rgba(255, 255, 255, 0.95);
     box-shadow: 0 4px 12px rgba(20, 34, 41, 0.08);
@@ -293,7 +301,8 @@ button {
     opacity: 0.8;
 }
 
-.model-toggle-button:hover:not(.is-active) {
+.model-toggle-button:hover:not(.is-active),
+.result-tab:hover:not(.is-active) {
     color: var(--text);
 }
 
@@ -313,41 +322,9 @@ button {
 }
 
 .result-tabs {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
     align-self: flex-start;
+    flex: 0 0 auto;
     width: fit-content;
-    padding: 0.16rem;
-    border: 1px solid rgba(20, 34, 41, 0.1);
-    border-radius: 999px;
-    background: rgba(20, 34, 41, 0.04);
-}
-
-.result-tab {
-    min-height: 1.55rem;
-    padding: 0.22rem 0.58rem;
-    border-radius: 999px;
-    color: var(--muted);
-    font-family: "IBM Plex Mono", monospace;
-    font-size: 0.72rem;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition:
-        background 140ms ease,
-        color 140ms ease,
-        box-shadow 140ms ease;
-}
-
-.result-tab.is-active {
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 4px 12px rgba(20, 34, 41, 0.08);
-}
-
-.result-tab:hover:not(.is-active) {
-    color: var(--text);
 }
 
 .result-head-main {
