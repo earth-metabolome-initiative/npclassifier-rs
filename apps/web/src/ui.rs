@@ -224,10 +224,6 @@ pub fn ResultPanel(
                 }
             }
 
-            if let Some(message) = copy_message {
-                p { class: "copy-toast", "{message}" }
-            }
-
             match selected_tab {
                 ResultTab::Classification => rsx! {
                     div { class: result_body_class(&state, active_entry.as_ref()),
@@ -282,6 +278,14 @@ pub fn ResultPanel(
                         on_download_export,
                     )}
                 },
+            }
+
+            if selected_tab == ResultTab::Export {
+                if let Some(message) = copy_message {
+                    div { class: "copy-feedback",
+                        p { class: "copy-toast", aria_live: "polite", "{message}" }
+                    }
+                }
             }
         }
     }
