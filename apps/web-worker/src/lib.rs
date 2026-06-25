@@ -18,8 +18,9 @@ mod app {
     use web_sys::{DedicatedWorkerGlobalScope, MessageEvent, Response};
 
     const MODEL_LOAD_TOTAL: usize = 6;
-    const DEFAULT_MINI_MODEL_BASE_URL: &str = "/models/mini-shared";
-    const DEFAULT_FULL_MODEL_BASE_URL: &str = "/models/full";
+    const DEFAULT_MINI_MODEL_BASE_URL: &str = "https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/mini-shared";
+    const DEFAULT_FULL_MODEL_BASE_URL: &str =
+        "https://huggingface.co/EarthMetabolomeInitiative/npclassifier-rs-models/resolve/main/full";
     thread_local! {
         static ACTIVE_TOKEN: Cell<u64> = const { Cell::new(0) };
         static RUNTIMES: RefCell<Vec<(WebModelVariant, Rc<ModelRuntime>)>> = const { RefCell::new(Vec::new()) };

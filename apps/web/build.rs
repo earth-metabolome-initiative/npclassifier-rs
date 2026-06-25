@@ -16,6 +16,8 @@ fn main() {
     println!("cargo:rerun-if-changed=../../crates/npclassifier-core/src");
     println!("cargo:rerun-if-changed=../web-worker/Cargo.toml");
     println!("cargo:rerun-if-changed=../web-worker/src");
+    println!("cargo:rerun-if-env-changed=NPCLASSIFIER_MINI_MODEL_BASE_URL");
+    println!("cargo:rerun-if-env-changed=NPCLASSIFIER_FULL_MODEL_BASE_URL");
 
     if let Err(error) = run() {
         eprintln!("{error}");

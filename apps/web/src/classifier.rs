@@ -318,9 +318,12 @@ impl ClassifierRuntime {
     }
 }
 
-pub fn use_classifier(initial_input: impl FnOnce() -> String + 'static) -> ClassifierHandle {
+pub fn use_classifier(
+    initial_input: impl FnOnce() -> String + 'static,
+    initial_model: impl FnOnce() -> WebModelVariant + 'static,
+) -> ClassifierHandle {
     let batch_input = use_signal(initial_input);
-    let selected_model = use_signal(WebModelVariant::default);
+    let selected_model = use_signal(initial_model);
     let input_notice = use_signal(|| None::<String>);
     let batch_state = use_signal(|| BatchState::Empty);
     let selected_index = use_signal(|| 0usize);

@@ -160,6 +160,110 @@ pub async fn copy_entries_export(
     Ok(message)
 }
 
+const SHARE_SMILES_QUERY_PARAM: &str = "smiles";
+const SHARE_MODEL_QUERY_PARAM: &str = "model";
+const MAX_SHARE_SMILES_BYTES: usize = 2 * 1024;
+const MAX_SHARE_SMILES_LINES: usize = 25;
+const MAX_SHARE_URL_BYTES: usize = 8_000;
+
+/// SMILES and model state restored from a share URL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SharedClassification {
+    /// SMILES input, preserving line breaks for batch inputs.
+    pub smiles: String,
+    /// Browser model variant selected by the share URL.
+    pub model: WebModelVariant,
+}
+
+/// Build a shareable URL that restores the given SMILES input and model.
+pub fn build_classification_share_url(
+    page_url: &str,
+    smiles: &str,
+    model: WebModelVariant,
+) -> Result<String, String> {
+    let trimmed_smiles = smiles.trim();
+    if trimmed_smiles.is_empty() {
+        return Err(String::from("Enter a SMILES before copying a share link."));
+    }
+    validate_share_smiles(trimmed_smiles)?;
+
+    let base_url = page_url_without_query_or_fragment(page_url);
+    let share_url_len = share_url_len(base_url, trimmed_smiles, model);
+    if share_url_len > MAX_SHARE_URL_BYTES {
+        return Err(String::from(
+            "This input is too long for a reliable share link. Copy or download an export instead.",
+        ));
+    }
+
+    let query = format!(
+        "{SHARE_SMILES_QUERY_PARAM}={}&{SHARE_MODEL_QUERY_PARAM}={}",
+        percent_encode(trimmed_smiles),
+        percent_encode(model.slug()),
+    );
+    let share_url = format!("{base_url}?{query}");
+
+    Ok(share_url)
+}
+
+fn validate_share_smiles(smiles: &str) -> Result<(), String> {
+    if smiles.len() > MAX_SHARE_SMILES_BYTES {
+        return Err(format!(
+            "This input is too large for a share link. Share links accept up to {} KiB of SMILES; use export for larger batches.",
+            MAX_SHARE_SMILES_BYTES / 1024
+        ));
+    }
+
+    let smiles_count = count_non_empty_lines(smiles, MAX_SHARE_SMILES_LINES + 1);
+    if smiles_count > MAX_SHARE_SMILES_LINES {
+        return Err(format!(
+            "This batch has too many entries for a share link. Share links accept up to {MAX_SHARE_SMILES_LINES} SMILES; use export for larger batches."
+        ));
+    }
+
+    Ok(())
+}
+
+/// Parse a shareable classification URL, if one is present.
+pub fn shared_classification_from_url(page_url: &str) -> Option<SharedClassification> {
+    let query = page_url.split_once('?')?.1.split_once('#').map_or_else(
+        || page_url.split_once('?').map_or("", |(_, query)| query),
+        |(query, _)| query,
+    );
+    let mut smiles = None;
+    let mut model = None;
+
+    for pair in query.split('&').filter(|pair| !pair.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        match percent_decode(key).ok()?.as_str() {
+            SHARE_SMILES_QUERY_PARAM => smiles = Some(percent_decode(value).ok()?),
+            SHARE_MODEL_QUERY_PARAM => {
+                model = web_model_variant_from_slug(&percent_decode(value).ok()?);
+            }
+            _ => {}
+        }
+    }
+
+    smiles
+        .filter(|value| !value.trim().is_empty())
+        .map(|smiles| SharedClassification {
+            smiles,
+            model: model.unwrap_or_default(),
+        })
+}
+
+/// Copy a shareable classification URL to the browser clipboard.
+pub async fn copy_classification_share_url(
+    page_url: Option<&str>,
+    smiles: &str,
+    model: WebModelVariant,
+) -> Result<String, String> {
+    let page_url = page_url.ok_or_else(|| String::from("Could not read the current page URL."))?;
+    let share_url = build_classification_share_url(page_url, smiles, model)?;
+    copy_text_to_clipboard(share_url).await?;
+
+    Ok(String::from("Copied share link."))
+}
+
 pub fn download_filename(
     entries: &[BatchEntry],
     detail: ExportDetail,
@@ -421,16 +525,121 @@ fn truncate_text(value: &str, max_chars: usize) -> String {
 fn percent_encode(value: &str) -> String {
     let mut encoded = String::new();
     for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(char::from(byte));
-            }
-            _ => {
-                let _ = write!(encoded, "%{byte:02X}");
-            }
+        if is_percent_encode_unreserved(byte) {
+            encoded.push(char::from(byte));
+        } else {
+            let _ = write!(encoded, "%{byte:02X}");
         }
     }
     encoded
+}
+
+fn share_url_len(base_url: &str, smiles: &str, model: WebModelVariant) -> usize {
+    base_url.len()
+        + 1
+        + SHARE_SMILES_QUERY_PARAM.len()
+        + 1
+        + percent_encoded_len(smiles)
+        + 1
+        + SHARE_MODEL_QUERY_PARAM.len()
+        + 1
+        + percent_encoded_len(model.slug())
+}
+
+fn percent_encoded_len(value: &str) -> usize {
+    value
+        .bytes()
+        .map(|byte| {
+            if is_percent_encode_unreserved(byte) {
+                1
+            } else {
+                3
+            }
+        })
+        .sum()
+}
+
+fn count_non_empty_lines(input: &str, limit: usize) -> usize {
+    let mut count = 0;
+    for line in input.lines() {
+        if !line.trim().is_empty() {
+            count += 1;
+            if count >= limit {
+                break;
+            }
+        }
+    }
+    count
+}
+
+const fn is_percent_encode_unreserved(byte: u8) -> bool {
+    matches!(
+        byte,
+        b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~'
+    )
+}
+
+fn percent_decode(value: &str) -> Result<String, String> {
+    let bytes = value.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'%' => {
+                let high = bytes
+                    .get(index + 1)
+                    .copied()
+                    .and_then(hex_value)
+                    .ok_or_else(|| String::from("invalid percent escape"))?;
+                let low = bytes
+                    .get(index + 2)
+                    .copied()
+                    .and_then(hex_value)
+                    .ok_or_else(|| String::from("invalid percent escape"))?;
+                decoded.push((high << 4) | low);
+                index += 3;
+            }
+            b'+' => {
+                decoded.push(b' ');
+                index += 1;
+            }
+            byte => {
+                decoded.push(byte);
+                index += 1;
+            }
+        }
+    }
+
+    String::from_utf8(decoded).map_err(|error| error.to_string())
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+fn web_model_variant_from_slug(slug: &str) -> Option<WebModelVariant> {
+    match slug {
+        "mini-shared" => Some(WebModelVariant::MiniShared),
+        "full" => Some(WebModelVariant::Full),
+        _ => None,
+    }
+}
+
+fn page_url_without_query_or_fragment(page_url: &str) -> &str {
+    let query_start = page_url.find('?');
+    let fragment_start = page_url.find('#');
+    let end = match (query_start, fragment_start) {
+        (Some(query_start), Some(fragment_start)) => query_start.min(fragment_start),
+        (Some(query_start), None) => query_start,
+        (None, Some(fragment_start)) => fragment_start,
+        (None, None) => page_url.len(),
+    };
+    &page_url[..end]
 }
 
 fn export_rows(entries: &[BatchEntry], detail: ExportDetail) -> Vec<ExportRow> {
@@ -622,8 +831,9 @@ mod tests {
     };
 
     use super::{
-        BuiltExport, ExportDetail, ExportFormat, MAX_REPORT_URL_BYTES, build_export,
-        build_prediction_report_url, download_filename, format_export_message,
+        BuiltExport, ExportDetail, ExportFormat, MAX_REPORT_URL_BYTES,
+        build_classification_share_url, build_export, build_prediction_report_url,
+        download_filename, format_export_message, shared_classification_from_url,
     };
 
     #[test]
@@ -720,6 +930,98 @@ mod tests {
             ),
             "Downloaded complete JSON export: 6 rows from 2 classifications."
         );
+    }
+
+    #[test]
+    fn share_url_encodes_smiles_and_model() {
+        let url = build_classification_share_url(
+            "https://npc.earthmetabolome.org/?old=value#result",
+            " CCO\nC1=CC=CC=C1 ",
+            npclassifier_core::WebModelVariant::Full,
+        )
+        .expect("share URL should fit");
+
+        assert_eq!(
+            url,
+            "https://npc.earthmetabolome.org/?smiles=CCO%0AC1%3DCC%3DCC%3DC1&model=full"
+        );
+    }
+
+    #[test]
+    fn share_url_rejects_empty_and_oversized_inputs() {
+        let empty_error = build_classification_share_url(
+            "https://npc.earthmetabolome.org/",
+            " \n ",
+            npclassifier_core::WebModelVariant::MiniShared,
+        )
+        .expect_err("empty input should not produce a share URL");
+        assert!(empty_error.contains("Enter a SMILES"));
+
+        let long_error = build_classification_share_url(
+            "https://npc.earthmetabolome.org/",
+            &"C".repeat(9_000),
+            npclassifier_core::WebModelVariant::MiniShared,
+        )
+        .expect_err("oversized input should not produce a share URL");
+        assert!(long_error.contains("too large"));
+
+        let very_long_error = build_classification_share_url(
+            "https://npc.earthmetabolome.org/",
+            &"C".repeat(3_000_000),
+            npclassifier_core::WebModelVariant::MiniShared,
+        )
+        .expect_err("multi-megabyte input should not produce a share URL");
+        assert!(very_long_error.contains("too large"));
+    }
+
+    #[test]
+    fn share_url_rejects_large_batches_before_url_encoding() {
+        let input = std::iter::repeat_n("CCO", 26)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let error = build_classification_share_url(
+            "https://npc.earthmetabolome.org/",
+            &input,
+            npclassifier_core::WebModelVariant::MiniShared,
+        )
+        .expect_err("large batch should not produce a share URL");
+
+        assert!(error.contains("too many entries"));
+    }
+
+    #[test]
+    fn share_url_limit_accounts_for_percent_encoding() {
+        let long_base_url = format!("https://{}.example.org/", "a".repeat(2_000));
+        let error = build_classification_share_url(
+            &long_base_url,
+            &"=".repeat(2_000),
+            npclassifier_core::WebModelVariant::MiniShared,
+        )
+        .expect_err("encoded URL should exceed the share URL cap");
+
+        assert!(error.contains("too long"));
+    }
+
+    #[test]
+    fn shared_classification_restores_smiles_and_model() {
+        let shared = shared_classification_from_url(
+            "https://npc.earthmetabolome.org/?smiles=CCO%0ACC%2BN&model=mini-shared#top",
+        )
+        .expect("share URL should parse");
+
+        assert_eq!(shared.smiles, "CCO\nCC+N");
+        assert_eq!(shared.model, npclassifier_core::WebModelVariant::MiniShared);
+    }
+
+    #[test]
+    fn shared_classification_defaults_unknown_model() {
+        let shared = shared_classification_from_url(
+            "https://npc.earthmetabolome.org/?model=unknown&smiles=CCO",
+        )
+        .expect("SMILES-only share URL should parse");
+
+        assert_eq!(shared.smiles, "CCO");
+        assert_eq!(shared.model, npclassifier_core::WebModelVariant::default());
     }
 
     fn sample_entries() -> Vec<BatchEntry> {

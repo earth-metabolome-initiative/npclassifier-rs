@@ -254,6 +254,44 @@ button {
     box-shadow: 0 0 0 4px rgba(23, 112, 168, 0.08);
 }
 
+.input-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.75rem;
+}
+
+.input-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    min-height: 2.3rem;
+    padding: 0.45rem 0.85rem;
+    color: var(--text);
+    border-radius: 999px;
+    border: 1px solid rgba(20, 34, 41, 0.1);
+    background: rgba(20, 34, 41, 0.05);
+    cursor: pointer;
+    transition:
+        transform 140ms ease,
+        border-color 140ms ease,
+        background 140ms ease,
+        color 140ms ease,
+        opacity 140ms ease;
+}
+
+.input-action:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(20, 34, 41, 0.2);
+    background: rgba(20, 34, 41, 0.08);
+    color: #205e8c;
+}
+
+.input-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 .model-toggle,
 .result-tabs {
     display: inline-flex;
@@ -605,6 +643,10 @@ button {
 .copy-feedback {
     display: flex;
     justify-content: flex-end;
+}
+
+.input-feedback {
+    margin-top: 0.75rem;
 }
 
 .copy-note,

@@ -34,3 +34,13 @@ Use `--backend ndarray` for CPU-only smoke runs.
 ```bash
 dx serve --package npclassifier-web --platform web --port 8787 --release
 ```
+
+The local web worker loads the same hosted model bundles used by the Pages
+deployment by default. To test against local model exports instead, compile the
+worker with explicit model base URLs:
+
+```bash
+NPCLASSIFIER_MINI_MODEL_BASE_URL=http://localhost:8787/models/mini-shared \
+NPCLASSIFIER_FULL_MODEL_BASE_URL=http://localhost:8787/models/full \
+dx serve --package npclassifier-web --platform web --port 8787 --release
+```

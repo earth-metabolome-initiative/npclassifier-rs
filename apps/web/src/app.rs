@@ -5,8 +5,8 @@ use npclassifier_core::MockFingerprintRecord;
 
 use crate::{
     actions::{
-        ExportDetail, ExportFormat, build_prediction_report_url, copy_entries_export,
-        download_entries_export,
+        ExportDetail, ExportFormat, build_prediction_report_url, copy_classification_share_url,
+        copy_entries_export, download_entries_export, shared_classification_from_url,
     },
     classifier::{MAX_WEB_INPUT_BYTES, use_classifier},
     hooks::{use_entry_keyboard_navigation, use_transient_message},
@@ -26,8 +26,9 @@ const WEB_COMMIT: &str = env!("NPCLASSIFIER_GIT_COMMIT");
 
 #[component]
 pub fn App() -> Element {
-    let classifier = use_classifier(default_startup_smiles);
-    let copy_message = use_transient_message(COPY_MESSAGE_CLEAR_MS);
+    let classifier = use_classifier(startup_smiles, startup_model);
+    let export_message = use_transient_message(COPY_MESSAGE_CLEAR_MS);
+    let share_message = use_transient_message(COPY_MESSAGE_CLEAR_MS);
     let mut result_tab = use_signal(|| ResultTab::Classification);
     let mut export_detail = use_signal(|| ExportDetail::Summary);
     let mut export_format = use_signal(|| ExportFormat::Csv);
@@ -42,6 +43,7 @@ pub fn App() -> Element {
 
     let current_input = classifier.current_input();
     let current_model = classifier.current_model();
+    let share_link_disabled = current_input.trim().is_empty();
     let export_entries_disabled = !classifier.has_export_entries();
     let selected_result_tab = *result_tab.read();
     let selected_export_detail = *export_detail.read();
@@ -59,6 +61,7 @@ pub fn App() -> Element {
     });
     let classifier_for_input = classifier.clone();
     let classifier_for_model_select = classifier.clone();
+    let classifier_for_share_link = classifier.clone();
     let classifier_for_previous = classifier.clone();
     let classifier_for_next = classifier.clone();
     let classifier_for_copy_export = classifier.clone();
@@ -80,13 +83,26 @@ pub fn App() -> Element {
                     current_model,
                     mini_tooltip: MINI_MODEL_TOOLTIP,
                     faithful_tooltip: FAITHFUL_MODEL_TOOLTIP,
+                    share_link_disabled,
+                    share_message: share_message.current(),
                     on_input: move |value: String| {
                         classifier_for_input.handle_input(&value);
-                        copy_message.clear();
+                        share_message.clear();
                     },
                     on_select_model: move |model| {
                         classifier_for_model_select.select_model(model);
-                        copy_message.clear();
+                        share_message.clear();
+                    },
+                    on_copy_share_link: move |()| {
+                        let input = classifier_for_share_link.current_input();
+                        let model = classifier_for_share_link.current_model();
+                        let page_url = current_page_url();
+                        let share_message = share_message;
+                        spawn(async move {
+                            match copy_classification_share_url(page_url.as_deref(), &input, model).await {
+                                Ok(message) | Err(message) => share_message.show(message),
+                            }
+                        });
                     },
                 }
 
@@ -100,7 +116,7 @@ pub fn App() -> Element {
                     export_format: selected_export_format,
                     export_entries_disabled,
                     report_issue_href,
-                    copy_message: copy_message.current(),
+                    copy_message: export_message.current(),
                     on_select_tab: move |tab| result_tab.set(tab),
                     on_select_export_detail: move |detail| export_detail.set(detail),
                     on_select_export_format: move |format| export_format.set(format),
@@ -108,12 +124,12 @@ pub fn App() -> Element {
                         let entries = classifier_for_copy_export.export_entries();
                         let detail = selected_export_detail;
                         let format = selected_export_format;
-                        let copy_message = copy_message;
+                        let export_message = export_message;
                         spawn(async move {
                             match copy_entries_export(&entries, detail, format).await {
-                                Ok(message) => copy_message.show(message),
+                                Ok(message) => export_message.show(message),
                                 Err(error) => {
-                                    copy_message.show(error);
+                                    export_message.show(error);
                                 }
                             }
                         });
@@ -125,8 +141,8 @@ pub fn App() -> Element {
                             selected_export_detail,
                             selected_export_format,
                         ) {
-                            Ok(message) => copy_message.show(message),
-                            Err(error) => copy_message.show(error),
+                            Ok(message) => export_message.show(message),
+                            Err(error) => export_message.show(error),
                         }
                     },
                     on_select_previous: move |()| classifier_for_previous.select_previous(),
@@ -135,6 +151,22 @@ pub fn App() -> Element {
             }
         }
     }
+}
+
+fn startup_smiles() -> String {
+    current_page_url()
+        .as_deref()
+        .and_then(shared_classification_from_url)
+        .map_or_else(default_startup_smiles, |shared| shared.smiles)
+}
+
+fn startup_model() -> npclassifier_core::WebModelVariant {
+    current_page_url()
+        .as_deref()
+        .and_then(shared_classification_from_url)
+        .map_or_else(npclassifier_core::WebModelVariant::default, |shared| {
+            shared.model
+        })
 }
 
 #[cfg(target_arch = "wasm32")]

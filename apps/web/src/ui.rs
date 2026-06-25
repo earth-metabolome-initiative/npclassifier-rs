@@ -19,6 +19,7 @@ const LIST_CHECK_ICON_PATH: &str = "M152.1 38.2c9.9 8.9 10.7 24 1.8 33.9l-72 80c
 const FILE_EXPORT_ICON_PATH: &str = "M0 64C0 28.7 28.7 0 64 0L224 0l0 128c0 17.7 14.3 32 32 32l128 0 0 128-168 0c-13.3 0-24 10.7-24 24s10.7 24 24 24l168 0 0 112c0 35.3-28.7 64-64 64L64 512c-35.3 0-64-28.7-64-64L0 64zM384 336l0-48 110.1 0-39-39c-9.4-9.4-9.4-24.6 0-33.9s24.6-9.4 33.9 0l80 80c9.4 9.4 9.4 24.6 0 33.9l-80 80c-9.4 9.4-24.6 9.4-33.9 0s-9.4-24.6 0-33.9l39-39L384 336zm0-208l-128 0L256 0 384 128z";
 const COPY_ICON_PATH: &str = "M384 336l-192 0c-8.8 0-16-7.2-16-16l0-256c0-8.8 7.2-16 16-16l140.1 0L400 115.9 400 320c0 8.8-7.2 16-16 16zM192 384l192 0c35.3 0 64-28.7 64-64l0-204.1c0-12.7-5.1-24.9-14.1-33.9L366.1 14.1c-9-9-21.2-14.1-33.9-14.1L192 0c-35.3 0-64 28.7-64 64l0 256c0 35.3 28.7 64 64 64zM64 128c-35.3 0-64 28.7-64 64L0 448c0 35.3 28.7 64 64 64l192 0c35.3 0 64-28.7 64-64l0-32-48 0 0 32c0 8.8-7.2 16-16 16L64 464c-8.8 0-16-7.2-16-16l0-256c0-8.8 7.2-16 16-16l32 0 0-48-32 0z";
 const DOWNLOAD_ICON_PATH: &str = "M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32l0 242.7-73.4-73.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l128 128c12.5 12.5 32.8 12.5 45.3 0l128-128c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L288 274.7 288 32zM64 352c-35.3 0-64 28.7-64 64l0 32c0 35.3 28.7 64 64 64l384 0c35.3 0 64-28.7 64-64l0-32c0-35.3-28.7-64-64-64l-101.5 0-45.3 45.3c-25 25-65.5 25-90.5 0L165.5 352 64 352zm368 56a24 24 0 1 1 0 48 24 24 0 1 1 0-48z";
+const LINK_ICON_PATH: &str = "M579.8 267.7c56.5-56.5 56.5-148 0-204.5c-50-50-128.8-56.5-186.3-15.4l-1.6 1.1c-14.4 10.3-17.7 30.3-7.4 44.6s30.3 17.7 44.6 7.4l1.6-1.1c32.1-22.9 76-19.3 103.8 8.6c31.5 31.5 31.5 82.5 0 114L422.3 334.8c-31.5 31.5-82.5 31.5-114 0c-27.9-27.9-31.5-71.8-8.6-103.8l1.1-1.6c10.3-14.4 6.9-34.4-7.4-44.6s-34.4-6.9-44.6 7.4l-1.1 1.6c-41.2 57.5-34.7 136.3 15.4 186.3c56.5 56.5 148 56.5 204.5 0L579.8 267.7zM60.2 244.3c-56.5 56.5-56.5 148 0 204.5c50 50 128.8 56.5 186.3 15.4l1.6-1.1c14.4-10.3 17.7-30.3 7.4-44.6s-30.3-17.7-44.6-7.4l-1.6 1.1c-32.1 22.9-76 19.3-103.8-8.6c-31.5-31.5-31.5-82.5 0-114L217.7 177.2c31.5-31.5 82.5-31.5 114 0c27.9 27.9 31.5 71.8 8.6 103.9l-1.1 1.6c-10.3 14.4-6.9 34.4 7.4 44.6s34.4 6.9 44.6-7.4l1.1-1.6c41.2-57.5 34.7-136.3-15.4-186.3c-56.5-56.5-148-56.5-204.5 0L60.2 244.3z";
 const CHEVRON_LEFT_ICON_PATH: &str = "M9.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l192 192c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L77.3 256 246.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-192 192z";
 const CHEVRON_RIGHT_ICON_PATH: &str = "M310.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-192 192c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L242.7 256 73.4 86.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l192 192z";
 const SPINNER_ICON_PATH: &str = "M304 48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm0 416a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM48 304a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm464-48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM142.9 437A48 48 0 1 0 75 369.1 48 48 0 1 0 142.9 437zm0-294.2A48 48 0 1 0 75 75a48 48 0 1 0 67.9 67.9zM369.1 437A48 48 0 1 0 437 369.1 48 48 0 1 0 369.1 437z";
@@ -39,6 +40,7 @@ enum IconKind {
     Export,
     Copy,
     Download,
+    Link,
     ArrowLeft,
     ArrowRight,
     Spinner,
@@ -108,8 +110,11 @@ pub fn InputPanel(
     current_model: WebModelVariant,
     mini_tooltip: &'static str,
     faithful_tooltip: &'static str,
+    share_link_disabled: bool,
+    share_message: Option<TransientMessage>,
     on_input: EventHandler<String>,
     on_select_model: EventHandler<WebModelVariant>,
+    on_copy_share_link: EventHandler<()>,
 ) -> Element {
     let mini_button_class = if current_model == WebModelVariant::MiniShared {
         "model-toggle-button is-active"
@@ -158,11 +163,34 @@ pub fn InputPanel(
                 oninput: move |event| on_input.call(event.value()),
             }
 
+            div { class: "input-actions",
+                button {
+                    class: "input-action",
+                    disabled: share_link_disabled,
+                    title: "Copy a URL that opens this SMILES input and selected model",
+                    aria_label: "Copy share link",
+                    onclick: move |_| on_copy_share_link.call(()),
+                    {app_icon(IconKind::Link)}
+                    span { "Copy link" }
+                }
+            }
+
             if let Some(input_notice) = input_notice {
                 p {
                     class: "panel-copy input-note",
                     role: "alert",
                     "{input_notice}"
+                }
+            }
+
+            if let Some(message) = share_message {
+                div { class: "copy-feedback input-feedback",
+                    p {
+                        key: "{message.id}",
+                        class: "copy-toast",
+                        aria_live: "polite",
+                        "{message.text}"
+                    }
                 }
             }
         }
@@ -322,6 +350,7 @@ fn app_icon(icon: IconKind) -> Element {
         IconKind::Export => export_icon(),
         IconKind::Copy => copy_icon(),
         IconKind::Download => download_icon(),
+        IconKind::Link => link_icon(),
         IconKind::ArrowLeft => arrow_left_icon(),
         IconKind::ArrowRight => arrow_right_icon(),
         IconKind::Spinner => spinner_icon(),
@@ -495,6 +524,10 @@ fn copy_icon() -> Element {
 
 fn download_icon() -> Element {
     fa_icon("0 0 512 512", DOWNLOAD_ICON_PATH)
+}
+
+fn link_icon() -> Element {
+    fa_icon("0 0 640 512", LINK_ICON_PATH)
 }
 
 fn arrow_left_icon() -> Element {
