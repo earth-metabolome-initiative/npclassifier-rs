@@ -12,7 +12,7 @@ distillation-dataset = [
     "dep:tokio",
     "dep:zenodo-rs",
 ]
-fingerprints = ["dep:finge-rs", "dep:smiles-parser"]
+fingerprints = ["dep:finge-rs", "dep:smiles-rs"]
 reference-dataset = ["dep:clap", "dep:indicatif", "dep:tokio", "dep:zenodo-rs", "dep:zstd"]
 runner = ["fingerprints", "dep:rayon", "dep:reqwest"]
 
@@ -27,7 +27,7 @@ rayon = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
-smiles-parser = { workspace = true, optional = true }
+smiles-rs = { workspace = true, optional = true }
 thiserror.workspace = true
 tokio = { workspace = true, optional = true }
 zenodo-rs = { workspace = true, optional = true }

@@ -20,7 +20,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use rayon::prelude::*;
 use serde::Deserialize;
-use smiles_parser::smiles::Smiles;
+use smiles_rs::smiles::Smiles;
 
 use npclassifier_core::{
     DISTILLATION_DATASET_DOI, FINGERPRINT_FORMULA_BITS, FINGERPRINT_INPUT_WIDTH, ModelHead,
