@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 
 use finge_rs::{Fingerprint, LayeredCountEcfpFingerprint, SmilesRdkitScratch};
-use smiles_parser::smiles::Smiles;
+use smiles_rs::smiles::Smiles;
 
 use crate::{
     NpClassifierError,

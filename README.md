@@ -79,6 +79,8 @@ cargo npc \
 
 The core crate also exposes a reusable builder-backed runner for the hosted `Mini` and `Faithful` bundles.
 
+SMILES parsing uses the published `smiles-rs` crate.
+
 ```rust
 # #[cfg(feature = "runner")]
 # {
