@@ -23,7 +23,7 @@ env:
 jobs:
   build:
     name: Build Pages artifact
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -63,7 +63,7 @@ jobs:
   deploy:
     name: Deploy Pages
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
